@@ -1,0 +1,10 @@
+{
+  "tolerance": 0.01,
+  "max coefficients": 7,
+  "imaginary weight": 20.22,
+  "make fit passive": true,
+  "specify fit range": true,
+  "wavelength min": 400e-9,
+  "wavelength max": 1000e-9,
+  "Anisotropy": "None"
+}

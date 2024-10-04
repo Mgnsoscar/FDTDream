@@ -1,0 +1,8 @@
+{
+  "tolerance": 0.1,
+  "max coefficients": 9,
+  "imaginary weight": 1,
+  "make fit passive": true,
+  "specify fit range": false,
+  "Anisotropy": "None"
+}
