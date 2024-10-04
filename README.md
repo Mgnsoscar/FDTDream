@@ -65,15 +65,8 @@ but you may need to update the path if the code does not work.
         db_name="Example database",  # Name of the database results should be saved to
         hide=False  # Wether the FDTD program should open or run in the background.
    )
-<<<<<<< HEAD
-   lumapi = importlib.util.module_from_spec(spec_win)
-   spec_win.loader.exec_module(lumapi)
    ```
-   
-   If you can't run the code initially, Your lumapi.py file is probably located elsewhere. With different FDTD releases, the \v241\ subfolder could be
-   named differently, so try locating Your lumapi.py file and change the location variable in the code snippet above.
-=======
-    ```
+    
     If this is the first time you've made a simulation object, the SimulationBase-class will generate a default simulation
     enviroment with six monitors, a source, an FDTD region with appropriate boundary conditions, and a substrate with
     surface located at z=0, along with a bunch of other settings you would usually set manually. 
@@ -180,4 +173,3 @@ but you may need to update the path if the code does not work.
     ![Edge mesh cubes.](Example_images/edge_mesh.png)
 
     
->>>>>>> 5eab6a4 (Worked on the readMe.)
