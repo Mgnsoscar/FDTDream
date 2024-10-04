@@ -557,6 +557,7 @@ class ResultsTable(QTableWidget):
         "Struct. 1 y-span",
         "FDTD x-span",
         "FDTD y-span",
+        "Custom Parameter",
         "Ref. Res. λ",
         "Trans. Res. λ",
         "Ref. E Max λ",
@@ -592,7 +593,8 @@ class ResultsTable(QTableWidget):
         "Mesh dy": "mesh_dy",
         "Mesh dz": "mesh_dz",
         "Struct. 1 Material": "struct1_material",
-        "Struct. 2 Material": "struct2_material"
+        "Struct. 2 Material": "struct2_material",
+        "Custom Parameter": "comment"
     }
     column_to_header_map: Dict[str, str] = {
         "id": "ID",
@@ -620,7 +622,8 @@ class ResultsTable(QTableWidget):
         "mesh_dy": "Mesh dy",
         "mesh_dz": "Mesh dz",
         "struct1_material": "Struct. 1 Material",
-        "struct2_material": "Struct. 2 Material"
+        "struct2_material": "Struct. 2 Material",
+        "comment": "Custom Paramter"
     }
 
     def __init__(self, parent: DatabaseViewer, canvas: PlotCanvas, headers: List[str] | int = None, *args, **kwargs):
@@ -687,6 +690,13 @@ class ResultsTable(QTableWidget):
         for row_nr, result in enumerate(results):
             for column_nr, value in enumerate(included_columns):
                 attribute = getattr(result, value)
+                if value == "comment":
+                    attribute = attribute.split(";:;")
+
+                    if len(attribute) < 2:
+                        attribute = None
+                    else:
+                        attribute = attribute[1]
                 self.setItem(row_nr, column_nr, NumericTableWidgetItem(str(attribute)))
 
         # Set alternating row colors
