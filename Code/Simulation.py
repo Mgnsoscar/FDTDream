@@ -1676,7 +1676,7 @@ class SimulationBase(lumapi.FDTD):
         max_wavelength = self._get_global_wavelength_range()[1]
 
         # Update the FDTD spans to account for the new wavelength range and film thickness
-        self.set_FDTD_spans((None, None, max_wavelength * 2 + self._get_film_thickness()))
+        self.set_FDTD_spans((None, None, max_wavelength * 2 + thickness))
 
     def run_and_save_to_db(self) -> None:
         """
@@ -2670,7 +2670,7 @@ class SimulationBase(lumapi.FDTD):
         self.setnamed("substrate", "z min", float(FDTD_z_min * 2) * 1e-9)  # Update the minimum z of the substrate
 
         # Position the source within the FDTD region
-        self.setnamed("source", "z", float((FDTD_z_max - self._film_thickness) * 0.8) * 1e-9)
+        self.setnamed("source", "z", float((FDTD_z_max - 200)) * 1e-9)
         self.setnamed("source", "x span", float(FDTD_xspan) * 1e-9)
         self.setnamed("source", "y span", float(FDTD_yspan) * 1e-9)
 
@@ -2696,12 +2696,10 @@ class SimulationBase(lumapi.FDTD):
         self.setnamed("yz_profile_monitor", "y span", float(FDTD_yspan) * 1e-9)
 
         # Move the reflection power monitor above the source
-        self.setnamed("ref_power_monitor", "z", float((FDTD_z_max - self._film_thickness) * (14 / 15)) * 1e-9)
+        self.setnamed("ref_power_monitor", "z", float(FDTD_z_max - 150) * 1e-9)
 
         # Move the transmission power monitor to the corresponding negative z-position
-        self.setnamed("trans_power_monitor", "z", float(
-            -((FDTD_z_max - self._film_thickness) * (14 / 15)) + self._film_thickness) * 1e-9
-                      )
+        self.setnamed("trans_power_monitor", "z", float(FDTD_z_min + 150) * 1e-9)
 
     def set_monitor_enabled(self, monitor_name: monitor_literal, enabled: bool) -> None:
         """

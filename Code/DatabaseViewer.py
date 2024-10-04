@@ -1015,4 +1015,4 @@ class DatabaseViewer(QMainWindow):
 
 if __name__ == "__main__":
 
-    DatabaseViewer.open_db_viewer("Simulation database")
+    DatabaseViewer.open_db_viewer("PZT Simulation Database")
