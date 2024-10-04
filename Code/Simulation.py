@@ -298,7 +298,6 @@ class SimulationBase(lumapi.FDTD):
                  folder_name: str,
                  db_name: str,
                  from_base: bool = True,
-                 save_path: str = None,
                  hide: bool = True,
                  *args, **kwargs
                  ) -> None:
