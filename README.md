@@ -65,8 +65,7 @@ but you may need to update the path if the code does not work.
         db_name="Example database",  # Name of the database results should be saved to
         hide=False  # Wether the FDTD program should open or run in the background.
    )
-   ```
-    
+    ```
     If this is the first time you've made a simulation object, the SimulationBase-class will generate a default simulation
     enviroment with six monitors, a source, an FDTD region with appropriate boundary conditions, and a substrate with
     surface located at z=0, along with a bunch of other settings you would usually set manually. 
@@ -129,7 +128,7 @@ but you may need to update the path if the code does not work.
             material="Au (Gold) - Johnson and Christy",  # Set material to gold from the Johnson and Christy dataset.
             edge_mesh_size=1,  # Side length of the meshing cubes added to each corner of the structure
             edge_mesh_stepsize=10,  # The mesh stepsize of the meshing cubes added to each corner.
-            bulk_mesh_enabled=False  # Disable the mesh that's based on this structure. It covers only air.
+            bulk_mesh_enabled=False  # Disable the mesh that's based on this structure.
         )
     ```
    
@@ -172,4 +171,4 @@ but you may need to update the path if the code does not work.
     If passing values to the edge mesh cube input parameters, it will create these mesh cubes on each corner:
     ![Edge mesh cubes.](Example_images/edge_mesh.png)
 
-    
+   
