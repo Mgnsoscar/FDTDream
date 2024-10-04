@@ -2001,6 +2001,7 @@ class SimulationBase(lumapi.FDTD):
             structure_name = (
                 f"structure_{structure_type_id}_group"
                 f"::structure_{structure_type_id}_{i}"
+                f"::structure_{structure_type_id}"
             )
 
             # Set the new x-coordinate for the current structure instance
@@ -2076,6 +2077,7 @@ class SimulationBase(lumapi.FDTD):
             name=rect_name, x=float(x) * 1e-9, y=float(y) * 1e-9, z=float(z) * 1e-9,
             x_span=float(x_span) * 1e-9, y_span=float(y_span) * 1e-9, z_span=float(z_span) * 1e-9, material=material
         )
+
 
         # Create a group and add structure to it
         self.addgroup(name=f"structure_{structure_type_id}_{structure_nr}")
@@ -2658,14 +2660,14 @@ class SimulationBase(lumapi.FDTD):
 
         # Set the new spans of all the simulation objects to be 1.1 times the FDTD span. This is to avoid
         # edge mesh issues when using Bloch boundary conditions
-        FDTD_xspan *= 1.1
-        FDTD_yspan *= 1.1
+        FDTD_xspan *= 2
+        FDTD_yspan *= 2
 
         # Update the dimensions of the substrate to match the new FDTD region
         self.setnamed("substrate", "x span", float(FDTD_xspan) * 1e-9)
         self.setnamed("substrate", "y span", float(FDTD_yspan) * 1e-9)
         self.setnamed("substrate", "z max", 0)  # Set the maximum z of the substrate to 0
-        self.setnamed("substrate", "z min", float(FDTD_z_min * 1.1) * 1e-9)  # Update the minimum z of the substrate
+        self.setnamed("substrate", "z min", float(FDTD_z_min * 2) * 1e-9)  # Update the minimum z of the substrate
 
         # Position the source within the FDTD region
         self.setnamed("source", "z", float((FDTD_z_max - self._film_thickness) * 0.8) * 1e-9)
