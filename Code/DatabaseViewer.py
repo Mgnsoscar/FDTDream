@@ -31,9 +31,7 @@ class PlotCanvas(FigureCanvas):
         "Trans. Res. λ",
         "Trans. Res.",
         "Ref. E Max λ",
-        "Trans. E Max λ",
-        "Struct. 1 x-span",
-        "Struct. 1 y-span"
+        "Trans. E Max λ"
     ]
     profilable_columns = [
         "Ref. E Max",
@@ -42,6 +40,8 @@ class PlotCanvas(FigureCanvas):
     legend_columns = [
         "Sim. Name",
         "ID",
+        "Struct. 1 x-span",
+        "Struct. 1 y-span",
         "Unit cell 1 x-span",
         "Unit cell 1 y-span",
         "Struct. 1 material",
@@ -55,7 +55,8 @@ class PlotCanvas(FigureCanvas):
         "Mesh dz",
         "FDTD x-span",
         "FDTD y-span",
-        "Polarization angle"
+        "Polarization angle",
+        "Custom Parameter"
     ]
     type_of_plot: Literal[
         "ref_power_pr_lambda",
@@ -129,7 +130,7 @@ class PlotCanvas(FigureCanvas):
         ],
         "ref_power_and_ref_mag_res_max": lambda result, legend: [
             (
-                "Reflectance and Normalized Reflected E$_{max}$/E$_0$",
+                "Reflectance and Reflected E$_{max}$/E$_0$",
                 "Wavelength (λ) [nm]",
                 ""
             ),
@@ -167,7 +168,7 @@ class PlotCanvas(FigureCanvas):
         ],
         "trans_power_and_ref_mag_res_max": lambda result, legend: [
             (
-                "Transmittance and Normalized Reflected E$_{max}$/E$_0$",
+                "Transmittance and Reflected E$_{max}$/E$_0$",
                 "Wavelength (λ) [nm]",
                 ""
             ),
@@ -176,7 +177,7 @@ class PlotCanvas(FigureCanvas):
         ],
         "trans_power_and_trans_mag_res_max": lambda result, legend: [
             (
-                "Transmittance and Normalized Transmitted E$_{max}$/E$_0$",
+                "Transmittance and Transmitted E$_{max}$/E$_0$",
                 "Wavelength (λ) [nm]",
                 ""
             ),
@@ -219,6 +220,8 @@ class PlotCanvas(FigureCanvas):
                       sim_result: Type[ResultModel],
                       plot_type: type_of_plot,
                       at_wavelength: str | float = "max",
+
+
                       update: str | None = None) -> None:
 
         x_pos = sim_result.profile_x

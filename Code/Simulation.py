@@ -2477,6 +2477,18 @@ class SimulationBase(lumapi.FDTD):
         # Case 1: Polarization angle along the x-axis (0° or 180°)
         if angle in (0, 180) and incidence_angle == 0:
             if allow_symmetry:
+                # Apply anti-symmetric boundary conditions along the x-axis and symmetric along the y-axis
+                self.setnamed("FDTD", "allow symmetry on all boundaries", True)  # Allow symmetric boundaries
+                self.setnamed("FDTD", "x min bc", "Anti-Symmetric")
+                self.setnamed("FDTD", "x max bc", "Anti-Symmetric")
+                self.setnamed("FDTD", "y min bc", "Symmetric")
+                self.setnamed("FDTD", "y max bc", "Symmetric")
+                pml = False  # Symmetry applied, no need for PML
+                print("Anti-symmetric boundary conditions applied along x-axis.")
+
+        # Case 2: Polarization angle along the y-axis (90° or 270°)
+        elif angle in (90, 270) and incidence_angle == 0:
+            if allow_symmetry:
                 # Apply symmetric boundary conditions along the x-axis and anti-symmetric along the y-axis
                 self.setnamed("FDTD", "allow symmetry on all boundaries", True)  # Allow symmetric boundaries
                 self.setnamed("FDTD", "x min bc", "Symmetric")
@@ -2484,19 +2496,7 @@ class SimulationBase(lumapi.FDTD):
                 self.setnamed("FDTD", "y min bc", "Anti-Symmetric")
                 self.setnamed("FDTD", "y max bc", "Anti-Symmetric")
                 pml = False  # Symmetry applied, no need for PML
-                print("Symmetric boundary conditions applied along x-axis.")
-
-        # Case 2: Polarization angle along the y-axis (90° or 270°)
-        elif angle in (90, 270) and incidence_angle == 0:
-            if allow_symmetry:
-                # Apply symmetric boundary conditions along the y-axis and anti-symmetric along the x-axis
-                self.setnamed("FDTD", "allow symmetry on all boundaries", True)  # Allow symmetric boundaries
-                self.setnamed("FDTD", "x min bc", "Anti-Symmetric")
-                self.setnamed("FDTD", "x max bc", "Anti-Symmetric")
-                self.setnamed("FDTD", "y min bc", "Symmetric")
-                self.setnamed("FDTD", "y max bc", "Symmetric")
-                pml = False  # Symmetry applied, no need for PML
-                print("Symmetric boundary conditions applied along y-axis.")
+                print("Anti-symmetric boundary conditions applied along y-axis.")
 
         # Case 3: Polarization angle is not aligned along the primary axes (x or y)
         else:
