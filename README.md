@@ -402,7 +402,7 @@ have a default collumn in the database, you can add the custom parameter and wri
 Also, it's good practice to allways save the simulation geometry at the point where you would run the simulation
 and check the saved simulation file first to see if it's what you intended. Also, for sweeps it could be good to run
 the sweep halfway without running the simulation, save the simulation file and check it out to see if the sweep is working as
-intended also. After checking this you could safely run and save the simulation results to the database.
+intended also. After checking this you could safely run and save the simulation results to the database for each sweep iteration.
 
 # The database viewer application
 
