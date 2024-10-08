@@ -113,7 +113,7 @@ The mesh stepsize will extend along all axes, centered at the cube.
 # Thin film with etched circular hole
 
 The FDTD region is automatically centered between the substrate and the tallest structure.
-By default, it is centered at z=50 nm, suitable for structures of up to 100 nm.
+By default, it is centered at z=50 nm, suitable for structures that are 100 nm thick.
 To simulate a 150 nm thick gold film with an etched circular hole,
 we need to adjust the film thickness. 
 
@@ -200,8 +200,8 @@ simulation_3.create_structure_grid(
     hole_in=None,
     min_max_x=(FDTD_x_min, FDTD_x_max),  # Grid boundaries in the x-direction
     min_max_y=(FDTD_y_min, FDTD_y_max),  # Grid boundaries in the y-direction
-    num_x=4,  # Number of structures along the x-direction
-    num_y=4,  # Number of structures along the y-direction
+    num_x=3,  # Number of structures along the x-direction
+    num_y=3,  # Number of structures along the y-direction
     # Optional parameters. The values here are the default values.
     min_x_solid_boundary=False,  # If the boundary is not the FDTD boundary, set to True.
     max_x_solid_boundary=False,  # This makes the distance to the boundary twice as big.
