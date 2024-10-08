@@ -166,6 +166,8 @@ Now, let’s create a grid of structures.
 We will use a material with data for wavelengths between 400 and 1000 nm,
 and adjust the simulation to this wavelength range. The set_global_wavelength_range() method will automatically 
 adjust the FDTD-region z-span and position along with the positions of the source and monitors.
+The structure grid is automatically created using the **create_structure_grid()** method, and each of the structures
+are automatically placed on top of the substrate.
 
 ```python
 # Create a new simulation
