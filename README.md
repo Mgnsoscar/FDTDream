@@ -449,3 +449,23 @@ simulation_5.set_monitor_enabled("yz_profile_monitor", True)
 # Running the simulation again will update the old database entry with new monitor results
 simulation_5.run_and_save_to_db()
 ```
+
+# Changing polarization angle and angle of incidence
+
+You can change the polarization angle of the source in the simulation by using the **set_polarization()** method.
+````python
+simulation_5.set_polarization_angle(angle=-45, allow_symmetry=True)
+````
+The angle (in degrees) goes clockwise around the xy-plane, so -45 degrees would be halfway between positive x and y axes.
+The allow_symmetry parameter specifies whether the simulation should have symetric borders. If True, the appropriate symmetry
+boundary conditions will be applied - symmetric/anti-symmetric for angles aligning with the x- or y-axis, and Bloch 
+boundary conditions for other angles. If allow_symmetry is False, all boundaries will be set to PML.
+
+In addition to setting the polarization direction, we can also change the source angle of incidence through the 
+**set_incidence_angle()** method. 
+````python
+simulation_5.set_incidence_angle(incidence_angle=30, allow_symmetry=True)
+````
+
+The incidence angle can be between (but not including) positive and negative 90 degrees. The same symmetry conditions are
+automatically applied here as for the polarization angle.
