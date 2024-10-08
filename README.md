@@ -193,11 +193,11 @@ FDTD_y_min, FDTD_y_max = FDTD_y_min_max
 
 # Create a grid of structures
 simulation_3.create_structure_grid(
-    structure_type_id=1,
-    shape="rect",  # Can also use 'circle'
-    structure_spans=(100, 200, 150),
-    structure_material="PZT",
-    hole_in=None,
+    structure_type_id=1,  # This will be the identifier for each of the structure in the grid
+    shape="rect",  # Will produce rectangles (bars). Can also use 'circle'
+    structure_spans=(100, 200, 150),  # The dimensions of each of the structures in the grid
+    structure_material="PZT",  # Material of each of the structures in the grid.
+    hole_in=None,  # The structures in the grid are not holes in another structure.
     min_max_x=(FDTD_x_min, FDTD_x_max),  # Grid boundaries in the x-direction
     min_max_y=(FDTD_y_min, FDTD_y_max),  # Grid boundaries in the y-direction
     num_x=3,  # Number of structures along the x-direction
