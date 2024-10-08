@@ -412,6 +412,9 @@ By clicking the cells of the different results you get different plot. By holdin
 cells at the same time, which will produce different type of plots. This you can try out for yourself. 
 You can sort the values in each column by clicking the column headers. This can be quite usefull.
 
+Another nice feature is if you click the cell containing the simulation ID, the FDTD application will open that 
+simulation result's excact simulation geometry.
+
 ![Default simulation enviroment.](Example_images/db_2.png)
 
 **Disclaimer:** The database viewer is extremely wonky, and might crash randomly or suddently only give you half-results
