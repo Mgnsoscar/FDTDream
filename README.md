@@ -54,7 +54,7 @@ from Simulation import SimulationBase
 from DatabaseViewer import DatabaseViewer
 ```
 
-# Creating simulation enviroment
+# Creating a simulation enviroment
 
 You can create a default simulation enviroment just by constructing an object from the SimulationBase class:
 
