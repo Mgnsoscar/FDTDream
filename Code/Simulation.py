@@ -756,8 +756,14 @@ class SimulationBase(lumapi.FDTD):
                 # Fetch electric field (E) and power (P) vectors
                 E_results = super(SimulationBase, self).getresult(f"{profile_type}_profile_monitor", "E")
                 P_results = super(SimulationBase, self).getresult(f"{profile_type}_profile_monitor", "P")
-                E_vectors = np.real(E_results["E"][:, 0, :, :]).astype(np.float16)
-                P_vectors = np.real(P_results["P"][:, 0, :, :]).astype(np.float16)
+
+                # Fetch the correct coordinates
+                if profile_type == "xz":
+                    E_vectors = np.real(E_results["E"][:, 0, :, :]).astype(np.float16)
+                    P_vectors = np.real(P_results["P"][:, 0, :, :]).astype(np.float16)
+                elif profile_type == "yz":
+                    E_vectors = np.real(E_results["E"][0, :, :, :]).astype(np.float16)
+                    P_vectors = np.real(P_results["P"][0, :, :, :]).astype(np.float16)
 
                 # Handle previous results if provided
                 if prev_profile_results is not None:
@@ -1443,7 +1449,7 @@ class SimulationBase(lumapi.FDTD):
 
         return x_span, y_span, z_span
 
-    def set_simulation_comment(self, comment: Optional[str], custom_parameter: str | None = None) -> None:
+    def set_simulation_comment(self, comment: Optional[str], custom_parameter: str | int | float | None = None) -> None:
         """
         Sets a comment that will be saved to the database along with the simulation results.
 
@@ -1655,7 +1661,7 @@ class SimulationBase(lumapi.FDTD):
         # Update the FDTD spans to account for the new wavelength range and film thickness
         self.set_FDTD_spans((fdtd_xspan, fdtd_yspan, wavelength_stop * 2  + self._get_film_thickness()))
 
-    def set_film_thickness(self, thickness: int) -> None:
+    def define_film_thickness(self, thickness: int) -> None:
         """
         Sets the thickness of the film (nm) and updates the FDTD spans accordingly.
 
@@ -2107,7 +2113,8 @@ class SimulationBase(lumapi.FDTD):
             hole_in: int | str = None,
             spans: Tuple[int | float, int | float, int | float] | None = None,
             position: Tuple[int | float, int | float, int | float] | None = None,
-            material: materials_explorer = None) -> None:
+            material: materials_explorer = None,
+            bulk_mesh_enabled: bool = True) -> None:
         """
         Adds a circular object to the simulation with the specified structure type id.
 
@@ -2122,6 +2129,7 @@ class SimulationBase(lumapi.FDTD):
                 will not be set.
             material (materials_explorer | None): The material to be assigned to the structure. If None,
                 the material will not be set.
+            bulk_mesh_enabled (bool): Whether the mesh around the structure should be enabled or not. Default to enabled.
 
         Returns:
             None: This function does not return any value; it modifies the simulation state by adding a circular structure.
@@ -2148,14 +2156,17 @@ class SimulationBase(lumapi.FDTD):
             x=float(x) * 1e-9,
             y=float(y) * 1e-9,
             z=float(z) * 1e-9,
-            x_span=float(x_span) * 1e-9,
-            y_span=float(y_span) * 1e-9,
+            radius=float(x_span) * 1e-9,
             z_span=float(z_span) * 1e-9,
             material=material
         )
 
+
         # Set as ellipsoid (circular structure)
         self.setnamed(circle_name, "make ellipsoid", True)
+
+        # Set the radius in the y-direction
+        self.set("radius 2", float(y_span) * 1e-9)
 
         # Update the active structures dictionary
         self._active_structures[f"structure_{structure_type_id}"]["shape"] = "circle"
@@ -2173,6 +2184,9 @@ class SimulationBase(lumapi.FDTD):
             "use relative coordinates",
             False
         )
+
+        if not bulk_mesh_enabled:
+            self.setnamed(f"structure_{structure_type_id}_group::mesh_{structure_type_id}", "enabled", False)
 
     def get_structure_min_max(self, structure_type_id: str | int) \
             -> Tuple[Tuple[np.float16, np.float16], Tuple[np.float16, np.float16], Tuple[np.float16, np.float16]]:
@@ -2693,7 +2707,11 @@ class SimulationBase(lumapi.FDTD):
 
         # Update the dimensions of the xz and yz profile monitors
         self.setnamed("xz_profile_monitor", "x span", float(FDTD_xspan) * 1e-9)
+        self.setnamed("xz_profile_monitor", "z span", float(self._film_thickness + 20) * 1e-9)
+        self.setnamed("xz_profile_monitor", "z", (float(self._film_thickness) / 2) * 1e-9)
         self.setnamed("yz_profile_monitor", "y span", float(FDTD_yspan) * 1e-9)
+        self.setnamed("yz_profile_monitor", "z span", float(self._film_thickness + 20) * 1e-9)
+        self.setnamed("yz_profile_monitor", "z", (float(self._film_thickness)/2) * 1e-9)
 
         # Move the reflection power monitor above the source
         self.setnamed("ref_power_monitor", "z", float(FDTD_z_max - 150) * 1e-9)

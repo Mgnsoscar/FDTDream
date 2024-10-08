@@ -139,7 +139,7 @@ class PlotCanvas(FigureCanvas):
         ],
         "ref_and_trans_power_and_ref_mag_max": lambda result, legend: [
             (
-                "Reflectance/Transmittance and Normalized Reflected E$_{max}$/E$_0$",
+                "Reflectance/Transmittance and Reflected E$_{max}$/E$_0$",
                 "Wavelength (λ) [nm]",
                 ""
             ),
@@ -149,7 +149,7 @@ class PlotCanvas(FigureCanvas):
         ],
         "ref_power_and_trans_mag_res_max": lambda result, legend: [
             (
-                "Reflectance and Normalized Transmitted E$_{max}$/E$_0$",
+                "Reflectance and Transmitted E$_{max}$/E$_0$",
                 "Wavelength (λ) [nm]",
                 ""
             ),
@@ -158,7 +158,7 @@ class PlotCanvas(FigureCanvas):
         ],
         "ref_and_trans_power_and_trans_mag_max": lambda result, legend: [
             (
-                "Reflectance/Transmittance and Normalized Transmitted E$_{max}$/E$_0$",
+                "Reflectance/Transmittance and Transmitted E$_{max}$/E$_0$",
                 "Wavelength (λ) [nm]",
                 ""
             ),
@@ -186,7 +186,7 @@ class PlotCanvas(FigureCanvas):
         ],
         "ref_and_trans_power_and_ref_and_trans_mag_max": lambda result, legend: [
             (
-                "Reflectance/Transmittance and Normalized E$_{max}$/E$_0$",
+                "Reflectance/Transmittance and E$_{max}$/E$_0$",
                 "Wavelength (λ) [nm]",
                 ""
             ),
@@ -278,6 +278,9 @@ class PlotCanvas(FigureCanvas):
         except:
             pass
 
+        scale = 200
+        vector_label='E-field vectors'
+
         if plot_type == "xz_profile":
 
             title = "E-Field Magnitude and Poynting Vectors in the XZ-Plane"
@@ -290,6 +293,8 @@ class PlotCanvas(FigureCanvas):
             trans_peaks, _ = find_peaks(sim_result.trans_mag_max_pr_lambda)
             ref_peaks, _ = find_peaks(sim_result.ref_mag_max_pr_lambda)
             wavelengths = lambdas[ref_peaks]
+            vector_label='Poynting vectors'
+            scale = 0.1
 
             if update != "update_lambda":
                 wavelength = np.max([sim_result.trans_mag_res_lambda, sim_result.ref_mag_res_lambda])
@@ -310,6 +315,8 @@ class PlotCanvas(FigureCanvas):
             trans_peaks, _ = find_peaks(sim_result.trans_mag_max_pr_lambda)
             ref_peaks, _ = find_peaks(sim_result.ref_mag_max_pr_lambda)
             wavelengths = lambdas[ref_peaks]
+            vector_label = 'Poynting vectors'
+            scale = 0.1
 
             if update != "update_lambda":
                 wavelength = np.max([sim_result.trans_mag_res_lambda, sim_result.ref_mag_res_lambda])
@@ -334,13 +341,22 @@ class PlotCanvas(FigureCanvas):
 
         self.displayed_wavelength = wavelength
 
-        # Use pcolormesh instead of imshow to account for non-uniform grid spacing
-        c = self.axes.pcolormesh(
-            X, Y,  # Meshgrid for non-uniform grid
-            magnitudes[:][:][np.argmin(np.abs(wavelengths - wavelength))],  # The heatmap data
-            shading='auto',  # Ensure smooth shading
-            cmap='viridis'  # Choose a suitable colormap
-        )
+        try:
+            # Use pcolormesh instead of imshow to account for non-uniform grid spacing
+            c = self.axes.pcolormesh(
+                X, Y,  # Meshgrid for non-uniform grid
+                magnitudes[:][:][np.argmin(np.abs(wavelengths - wavelength))],  # The heatmap data
+                shading='auto',  # Ensure smooth shading
+                cmap='viridis'  # Choose a suitable colormap
+            )
+        except:
+            # Use pcolormesh instead of imshow to account for non-uniform grid spacing
+            c = self.axes.imshow(
+                x_pos, y_pos,  # Meshgrid for non-uniform grid
+                magnitudes[:][:][np.argmin(np.abs(wavelengths - wavelength))],  # The heatmap data
+                shading='auto',  # Ensure smooth shading
+                cmap='viridis'  # Choose a suitable colormap
+            )
 
         # Add a new colorbar and store the reference
         self.colorbar = self.axes.figure.colorbar(c, ax=self.axes, label="Magnitude")
@@ -363,8 +379,8 @@ class PlotCanvas(FigureCanvas):
                 V_x_sub, V_y_sub,  # Subsampled P_x and P_z
                 color='white',  # Choose a color that contrasts well with the heatmap
                 width=0.0005,
-                scale=smallest_cell_size * 100,
-                label='E-field vectors'
+                scale=smallest_cell_size * scale,
+                label=vector_label
             )
 
         self.axes.set_xlabel(x_label)
@@ -448,30 +464,29 @@ class PlotCanvas(FigureCanvas):
         is_profilable_columns = any(column in PlotCanvas.profilable_columns for column in clicked_columns)
         is_legend_columns = any(column in PlotCanvas.legend_columns for column in clicked_columns)
 
-        # Check if anything should be plotted. If not, return
-        if not is_plotable_columns and not is_profilable_columns:
-            return
-
         # Fetch the last clicked column
         last_clicked = clicked_data["last_clicked"]
+
+        # Check if anything should be plotted. If not, return
+        if all([column == noe for column, noe in zip(clicked_columns, ["Struct. 1 x-span", "Struct. 1 z-span"])]):
+            self._plot_profile(
+                sim_result=last_clicked["result"],
+                plot_type="xz_profile", update=update
+            )
+        elif all([column == noe for column, noe in zip(clicked_columns, ["Struct. 1 y-span", "Struct. 1 z-span"])]):
+            self._plot_profile(
+                sim_result=last_clicked["result"],
+                plot_type="yz_profile", update=update
+            )
+        elif not is_plotable_columns and not is_profilable_columns:
+            return
+
 
         # Determine if profiles should be plotted
         if last_clicked["column_name"] == "Ref. E Max":
             self._plot_profile(
                 sim_result=last_clicked["result"],
                 plot_type="ref_profile", update=update
-            )
-            return
-        elif last_clicked["column_name"] == "Struct. 1 x-span":
-            self._plot_profile(
-                sim_result=last_clicked["result"],
-                plot_type="xz_profile", update=update
-            )
-            return
-        elif last_clicked["column_name"] == "Struct. 1 y-span":
-            self._plot_profile(
-                sim_result=last_clicked["result"],
-                plot_type="yz_profile", update=update
             )
             return
         elif last_clicked["column_name"] == "Trans. E Max":
