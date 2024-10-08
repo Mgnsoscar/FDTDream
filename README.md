@@ -440,8 +440,9 @@ stating the simulation has already been saved, and it aborts the run. This is ve
 sweeps where you already have result data for parts of the sweep- Then you don't have to manually exclude those
 simulations. Just run the entire sweep range, and the program filters out the simulations you don't need to run again automatically.
 
-If a previous simulation has new monitors enabled, the program will disable existing monitors with saved results,
-run the simulation with the new monitors, and update the database entry accordingly. This approach saves time and
+If a previous simulation with the same geometry has already been saved to the database, but the simulation you're trying to run
+has new monitors enabled, the program will disable the monitors which data is already saved, running the simulation with the new monitors only.
+After the simulation is finished, the new monitor data will be added to the previous database entry. This approach saves time and
 computational resources.
 
 ```python
