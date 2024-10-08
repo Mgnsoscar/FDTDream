@@ -384,18 +384,25 @@ for bar_yspan in range(150, 250, 25):  # Sweep the y-span of the gold bar
     # Set a custom comment and parameter for the simulation result
     comment = ("Simulating a periodic array of gold bars. "
                "Sweeping the gold bar length while keeping the separation distance constant. "
-               "The custom parameter is the distance of material between each gold bar.")
-    custom_parameter = separation_distance  # Constant separation distance
+               "The custom parameter is the distance between the borders of each gold bar "
+               " in both the x- and y-direction.")
+    # Constant separation distance. If this changed for each sweep iteration you could calculate it.
+    custom_parameter = separation_distance  
 
     # Set the simulation comment and custom parameter
     simulation_5.set_simulation_comment(comment=comment, custom_parameter=custom_parameter)
 
-    # Save the simulation state before running it for better tracking
+    # Run the simulation and save the results to the database
     simulation_5.run_and_save_to_db()  # Run simulation and save results to database
 ```
 
 It is not neccesary to add a comment and a custom parameter, but it can be nice. If there is a parameter that doesn't
 have a default collumn in the database, you can add the custom parameter and write in the comment what it represents.
+
+Also, it's good practice to allways save the simulation geometry at the point where you would run the simulation
+and check the saved simulation file first to see if it's what you intended. Also, for sweeps it could be good to run
+the sweep halfway without running the simulation, save the simulation file and check it out to see if the sweep is working as
+intended also. After checking this you could safely run and save the simulation results to the database.
 
 # The database viewer application
 
