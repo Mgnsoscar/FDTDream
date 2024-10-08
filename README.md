@@ -455,13 +455,15 @@ simulation_5.run_and_save_to_db()
 
 # The simulation allready exists, so it won't run again.
 
-# Enable monitors again and add xz- and yz-profile monitors, ensuring all others are disabled
+# Enable monitors again and add xz- and yz-profile monitors
 simulation_5.set_monitor_enabled("trans_profile_monitor", True)
 simulation_5.set_monitor_enabled("ref_profile_monitor", True)
 simulation_5.set_monitor_enabled("xz_profile_monitor", True)
 simulation_5.set_monitor_enabled("yz_profile_monitor", True)
 
-# Running the simulation again will update the old database entry with new monitor results
+# Running the simulation again will now diable the transmission and reflection profile monitors
+# along with the reflection and transmission far-field monitors, and will update the old database entry with
+# the xz- and yz-profile monitor result data.
 simulation_5.run_and_save_to_db()
 ```
 
