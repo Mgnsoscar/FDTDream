@@ -374,8 +374,8 @@ simulation_5.set_FDTD_spans((
 # Sweep the length of the gold bars while maintaining the separation distance
 for bar_yspan in range(150, 250, 25):  # Sweep the y-span of the gold bar
     simulation_5.set_structure_spans(
-        structure_type_id=1,
-        spans=(None, bar_yspan, None)  # Change only the y-span
+        structure_type_id=1,  # Change the spans of all structures that has this id
+        spans=(None, bar_yspan, None)  # Change only the y-span, leaving the x, and z spans unchanged
     )
 
     # Adjust the FDTD span to keep the separation distance constant
