@@ -19,6 +19,7 @@ from sqlalchemy import (
     TypeDecorator,
     text,
     Row,
+    select
 )
 from sqlalchemy.orm import (
     declarative_base,
@@ -31,6 +32,148 @@ from sqlalchemy.orm import (
 Base = declarative_base()
 
 
+class NumpyArrayDictType(TypeDecorator):
+    """
+    SQLAlchemy custom type to store nested dictionaries of NumPy arrays as BLOBs in the database.
+
+    This class allows nested dictionaries containing NumPy arrays to be serialized into binary large objects (BLOBs)
+    when storing them in the database and deserialized back into nested dictionaries of NumPy arrays when retrieving them.
+    """
+
+    impl = LargeBinary  # Data will be stored as a binary large object (BLOB)
+    cache_ok = True  # Allows SQLAlchemy to cache this type if necessary
+
+    def _flatten_dict(self, d, parent_key='', sep='::'):
+        """
+        Flattens a nested dictionary.
+
+        Parameters:
+            d (dict): The dictionary to flatten.
+            parent_key (str): The base key string for the current level.
+            sep (str): The separator for concatenating keys.
+
+        Returns:
+            dict: A flattened dictionary.
+        """
+        items = {}
+        for key, value in d.items():
+            keystring = f"{key}"
+            if isinstance(value, dict):
+                for subkey, subvalue in value.items():
+                    newstring = f"{keystring}{sep}{subkey}"
+                    items[newstring] = subvalue
+            else:
+                items[keystring] = value
+
+        return items
+
+        # items = {}
+        # for k, v in d.items():
+        #     new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        #     if isinstance(v, dict):
+        #         items.update(self._flatten_dict(v, new_key, sep=sep))
+        #     else:
+        #         items[new_key] = v
+        # return items
+
+    def _unflatten_dict(self, items, sep='::'):
+        """
+        Converts a flattened dictionary back to a nested dictionary.
+
+        Parameters:
+            items (dict): The flattened dictionary.
+            sep (str): The separator used to determine nested structure.
+
+        Returns:
+            dict: A nested dictionary.
+        """
+        result = {}
+        for key, value in items.items():
+            keys = key.split(sep)
+            depth = len(keys)
+            if depth == 0:
+                raise ValueError("Something about the depth of your dictionionary here.")
+            if keys[0] not in result:
+                if depth == 1:
+                    result[keys[0]] = value
+                else:
+                    result[keys[0]] = {}
+
+            if depth > 1:
+                result[keys[0]][keys[1]] = value
+
+        return result
+
+        # result = {}
+        # for key, value in items.items():
+        #     parts = key.split(sep)
+        #     d = result
+        #     for part in parts[:-1]:
+        #         if part not in d:
+        #             d[part] = {}
+        #         d = d[part]
+        #     d[parts[-1]] = value
+        # return result
+
+    def process_bind_param(self, value, dialect):
+        """
+        Converts the nested dictionary of NumPy arrays into binary format before saving to the database.
+
+        Parameters:
+            value (dict): The nested dictionary containing NumPy arrays to store.
+            dialect: The database dialect in use (ignored in this case).
+
+        Returns:
+            bytes: The binary representation of the nested dictionary of NumPy arrays or None if no value is provided.
+        """
+        if value is None:
+            return None
+
+        # Flatten the nested dictionary
+        flattened_dict = self._flatten_dict(value)
+
+        # Serialize the flattened dictionary using np.savez
+        out = io.BytesIO()
+
+        # Convert each NumPy array to float16 for storage efficiency
+        for key, array in flattened_dict.items():
+            if isinstance(array, np.ndarray):
+                # Convert to np.float16 if it's not already
+                flattened_dict[key] = np.float16(array)
+            else:
+                raise ValueError(f"Value for key {key} is not a NumPy array.")
+
+        # Save the dictionary to the binary stream
+        np.savez(out, **flattened_dict)
+
+        out.seek(0)  # Rewind the buffer to the beginning
+        return out.read()  # Return the binary data to be stored in the database
+
+    def process_result_value(self, value, dialect):
+        """
+        Converts the binary data back into a nested dictionary of NumPy arrays when retrieving from the database.
+
+        Parameters:
+            value (bytes): The binary data retrieved from the database.
+            dialect: The database dialect in use (ignored in this case).
+
+        Returns:
+            dict: The reconstructed nested dictionary of NumPy arrays or None if no data is available.
+        """
+        if value is None:
+            return None
+
+        # Deserialize the binary data back into a flattened dictionary of NumPy arrays using np.load
+        out = io.BytesIO(value)
+        out.seek(0)  # Rewind the buffer to the beginning
+        loaded = np.load(out)
+
+        # Convert the loaded data back to a flattened dictionary
+        flattened_dict = {key: loaded[key] for key in loaded.keys()}
+
+        # Unflatten the dictionary to its original nested structure
+        result = self._unflatten_dict(flattened_dict)
+        return result
 class NumpyArrayType(TypeDecorator):
     """
     SQLAlchemy custom type to store NumPy arrays as BLOBs in the database.
@@ -96,7 +239,6 @@ class NumpyArrayType(TypeDecorator):
         out = io.BytesIO(value)
         out.seek(0)  # Rewind the buffer to the beginning
         return np.load(out)
-
 
 class NumpyCompressedArrayType(TypeDecorator):
     """
@@ -266,26 +408,27 @@ class ResultModel(Base):
     trans_power_res_lambda = Column(NumpyArrayType, nullable=True, index=True)
     trans_power_res = Column(NumpyArrayType, nullable=True, index=True)
 
+
     profile_x = Column(NumpyArrayType, nullable=True, index=False)
     profile_y = Column(NumpyArrayType, nullable=True, index=False)
-    ref_profile_vectors = Column(NumpyArrayType, nullable=True, index=False)
-    trans_profile_vectors = Column(NumpyArrayType, nullable=True, index=False)
+    ref_profile_vectors = Column(NumpyArrayDictType, nullable=True, index=False)
+    trans_profile_vectors = Column(NumpyArrayDictType, nullable=True, index=False)
 
-    ref_mag_max_pr_lambda = Column(NumpyArrayType, nullable=True, index=False)
-    trans_mag_max_pr_lambda = Column(NumpyArrayType, nullable=True, index=False)
+    ref_mag_max_pr_lambda = Column(NumpyArrayDictType, nullable=True, index=False)
+    trans_mag_max_pr_lambda = Column(NumpyArrayDictType, nullable=True, index=False)
 
     ref_mag_res_lambda = Column(NumpyArrayType, nullable=True, index=True)
     ref_mag_res = Column(NumpyArrayType, nullable=True, index=True)
     trans_mag_res_lambda = Column(NumpyArrayType, nullable=True, index=True)
     trans_mag_res = Column(NumpyArrayType, nullable=True, index=True)
 
-    xz_profile_E_vectors = Column(NumpyArrayType, nullable=True, index=True)
-    xz_profile_P_vectors = Column(NumpyArrayType, nullable=True, index=True)
+    xz_profile_E_vectors = Column(NumpyArrayDictType, nullable=True, index=True)
+    xz_profile_P_vectors = Column(NumpyArrayDictType, nullable=True, index=True)
     xz_profile_x_coord = Column(NumpyArrayType, nullable=True, index=True)
     xz_profile_z_coord = Column(NumpyArrayType, nullable=True, index=True)
 
-    yz_profile_E_vectors = Column(NumpyArrayType, nullable=True, index=True)
-    yz_profile_P_vectors = Column(NumpyArrayType, nullable=True, index=True)
+    yz_profile_E_vectors = Column(NumpyArrayDictType, nullable=True, index=True)
+    yz_profile_P_vectors = Column(NumpyArrayDictType, nullable=True, index=True)
     yz_profile_y_coord = Column(NumpyArrayType, nullable=True, index=True)
     yz_profile_z_coord = Column(NumpyArrayType, nullable=True, index=True)
 
@@ -327,9 +470,9 @@ class DatabaseHandler:
         index_database(tablename: str, columns: List[str]) -> None: Creates indexes on specified columns of a table.
     """
 
-    __slots__ = ("db_name", "engine", "temp_session", "sessions")
+    __slots__ = ("db_name", "engine", "temp_session", "sessions", "_base")
 
-    def __init__(self, database_name: str, base=Base) -> None:
+    def __init__(self, database_name: str) -> None:
         """
         Initializes the DatabaseHandler with the specified SQLite database.
 
@@ -366,7 +509,7 @@ class DatabaseHandler:
 
         # Check if the database file exists; if not, create it
         if not os.path.exists(f"{database_name}.db"):
-            self._create_database(base)
+            self._create_database(declarative_base())
 
     def _create_database(self, base):
         """
@@ -382,6 +525,23 @@ class DatabaseHandler:
 
         # Create all tables defined in the base's metadata
         base.metadata.create_all(self.engine)
+
+    def get_entries_by_ids(self, ids: List[int]):
+        """
+        Fetches entries from the database based on a list of IDs.
+
+        Args:
+            ids (List[int]): A list of entry IDs to fetch from the database.
+
+        Returns:
+            List[ResultModel]: A list of database entries that correspond to the provided IDs.
+        """
+        # Ensure the session is closed properly using a context manager
+        with self.sessions['get_result_by_id'] as session:
+            # Query the database for entries matching the list of IDs
+            query = select(ResultModel).where(ResultModel.id.in_(ids))
+            results = session.execute(query).scalars().all()
+        return results
 
     def open_temp_session(self) -> None:
         """

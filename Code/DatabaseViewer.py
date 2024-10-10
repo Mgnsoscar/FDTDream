@@ -9,12 +9,14 @@ from PyQt6.QtWidgets import (
     QLabel, QTableWidget, QTableWidgetItem, QHeaderView,
     QTableView, QStyledItemDelegate, QSlider
 )
+from Simulation import SimulationBase
 from Simulation_database import (
     ResultModel, DatabaseHandler
 )
 from matplotlib.backends.backend_qt5agg import (
     FigureCanvasQTAgg as FigureCanvas
 )
+from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from sqlalchemy import inspect, between, Column, Row
 from typing import List, Dict, Literal, Any, Type, Tuple
@@ -23,6 +25,7 @@ import numpy as np
 import sys
 import os
 import subprocess
+
 
 class PlotCanvas(FigureCanvas):
     plottable_columns = [
@@ -118,7 +121,7 @@ class PlotCanvas(FigureCanvas):
                 "Wavelength (λ) [nm]",
                 "$\\frac{{E_{{max}}}}{{E_0}}$"
             ),
-            (result.lambdas, result.ref_mag_max_pr_lambda, f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
+            (result.lambdas, result.ref_mag_max_pr_lambda[str(5)], f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
         ],
         "trans_magnitude_max_pr_lambda": lambda result, legend: [
             (
@@ -126,7 +129,7 @@ class PlotCanvas(FigureCanvas):
                 "Wavelength (λ) [nm]",
                 "$\\frac{{E_{{max}}}}{{E_0}}$"
             ),
-            (result.lambdas, result.trans_mag_max_pr_lambda, f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
+            (result.lambdas, result.trans_mag_max_pr_lambda[str(5)], f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
         ],
         "ref_power_and_ref_mag_res_max": lambda result, legend: [
             (
@@ -135,7 +138,7 @@ class PlotCanvas(FigureCanvas):
                 ""
             ),
             (result.lambdas, result.ref_powers, f"Reflectance {legend}"),
-            (result.lambdas, result.ref_mag_max_pr_lambda, f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
+            (result.lambdas, result.ref_mag_max_pr_lambda[str(5)], f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
         ],
         "ref_and_trans_power_and_ref_mag_max": lambda result, legend: [
             (
@@ -145,7 +148,7 @@ class PlotCanvas(FigureCanvas):
             ),
             (result.lambdas, result.ref_powers, f"Reflectance {legend}"),
             (result.lambdas, result.trans_powers, f"Transmittance {legend}"),
-            (result.lambdas, result.ref_mag_max_pr_lambda, f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
+            (result.lambdas, result.ref_mag_max_pr_lambda[str(5)], f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
         ],
         "ref_power_and_trans_mag_res_max": lambda result, legend: [
             (
@@ -154,7 +157,7 @@ class PlotCanvas(FigureCanvas):
                 ""
             ),
             (result.lambdas, result.ref_powers, f"Reflectance {legend}"),
-            (result.lambdas, result.trans_mag_max_pr_lambda, f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
+            (result.lambdas, result.trans_mag_max_pr_lambda[str(5)], f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
         ],
         "ref_and_trans_power_and_trans_mag_max": lambda result, legend: [
             (
@@ -164,7 +167,7 @@ class PlotCanvas(FigureCanvas):
             ),
             (result.lambdas, result.ref_powers, f"Reflectance {legend}"),
             (result.lambdas, result.trans_powers, f"Transmittance {legend}"),
-            (result.lambdas, result.trans_mag_max_pr_lambda, f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
+            (result.lambdas, result.trans_mag_max_pr_lambda[str(5)], f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
         ],
         "trans_power_and_ref_mag_res_max": lambda result, legend: [
             (
@@ -173,7 +176,7 @@ class PlotCanvas(FigureCanvas):
                 ""
             ),
             (result.lambdas, result.trans_powers, f"Transmittance {legend}"),
-            (result.lambdas, result.ref_mag_max_pr_lambda, f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
+            (result.lambdas, result.ref_mag_max_pr_lambda[str(5)], f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
         ],
         "trans_power_and_trans_mag_res_max": lambda result, legend: [
             (
@@ -182,7 +185,7 @@ class PlotCanvas(FigureCanvas):
                 ""
             ),
             (result.lambdas, result.trans_powers, f"Transmittance {legend}"),
-            (result.lambdas, result.trans_mag_max_pr_lambda, f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
+            (result.lambdas, result.trans_mag_max_pr_lambda[str(5)], f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
         ],
         "ref_and_trans_power_and_ref_and_trans_mag_max": lambda result, legend: [
             (
@@ -192,8 +195,8 @@ class PlotCanvas(FigureCanvas):
             ),
             (result.lambdas, result.ref_powers, f"Reflectance {legend}"),
             (result.lambdas, result.trans_powers, f"Transmittance {legend}"),
-            (result.lambdas, result.ref_mag_max_pr_lambda, f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}"),
-            (result.lambdas, result.trans_mag_max_pr_lambda, f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}"),
+            (result.lambdas, result.ref_mag_max_pr_lambda[str(5)], f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}"),
+            (result.lambdas, result.trans_mag_max_pr_lambda[str(5)], f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}"),
         ],
     }
 
@@ -241,87 +244,122 @@ class PlotCanvas(FigureCanvas):
 
 
         if plot_type == "ref_profile":
+
             string = "Reflected"
-            profile_vectors = sim_result.ref_profile_vectors
-            magnitudes = np.linalg.norm(profile_vectors, axis=-1).T.astype(np.float16)
-            peaks, _ = find_peaks(sim_result.ref_mag_max_pr_lambda)
-            wavelengths = lambdas[peaks]
+            distance = str(5)
+            print(sim_result.ref_profile_vectors.keys())
+            wavelengths = np.array(list(sim_result.ref_profile_vectors[str(5)].keys())).astype(np.float16)
 
             if update != "update_lambda":
-                wavelength = sim_result.ref_mag_res_lambda
+                wavelength = sim_result.ref_power_res_lambda
             else:
                 wavelength = self.show_wavelength
 
+            wavelength = wavelengths[np.argmin(np.abs(wavelengths - wavelength))]
 
-            V_x = (profile_vectors[:, :, np.argmin(np.abs(wavelengths - wavelength)), 0])
-            V_y = (profile_vectors[:, :, np.argmin(np.abs(wavelengths - wavelength)), 1])
+            profile_vectors = sim_result.ref_profile_vectors[distance][str(wavelength)]
+            magnitudes = np.linalg.norm(profile_vectors, axis=-1).T.astype(np.float16)
+
+            V_x = profile_vectors[:, :, 0]
+            V_y = profile_vectors[:, :, 1]
 
         elif plot_type == "trans_profile":
-            string = "Transmitted"
-            profile_vectors = sim_result.trans_profile_vectors
-            magnitudes = np.linalg.norm(profile_vectors, axis=-1).T.astype(np.float16)
-            peaks, _ = find_peaks(sim_result.trans_mag_max_pr_lambda)
-            wavelengths = lambdas[peaks]
+            string = "Reflected"
+            distance = str(5)
+            wavelengths = np.array(list(sim_result.trans_profile_vectors[str(5)].keys())).astype(np.float16)
 
             if update != "update_lambda":
-                wavelength = sim_result.trans_mag_res_lambda
+                wavelength = sim_result.ref_power_res_lambda
             else:
                 wavelength = self.show_wavelength
 
-            V_x = (profile_vectors[:, :, np.argmin(np.abs(wavelengths - wavelength)), 0])
-            V_y = (profile_vectors[:, :, np.argmin(np.abs(wavelengths - wavelength)), 1])
+            wavelength = wavelengths[np.argmin(np.abs(wavelengths - wavelength))]
+
+            profile_vectors = sim_result.trans_profile_vectors[distance][str(wavelength)]
+            magnitudes = np.linalg.norm(profile_vectors, axis=-1).T.astype(np.float16)
+
+            V_x = profile_vectors[:, :, 0]
+            V_y = profile_vectors[:, :, 1]
 
         try:
-            title = f"{string} Near-Field Magnitudes at $\\lambda$ = {wavelengths[np.argmin(np.abs(wavelengths - wavelength))]} nm"
+            title = f"{string} Near-Field Magnitudes at $\\lambda$ = {wavelength} nm"
             x_label = "x-position [nm]"
             y_label = "y-position [nm]"
         except:
             pass
 
-        scale = 200
+        scale = 50
         vector_label='E-field vectors'
 
         if plot_type == "xz_profile":
-
-            title = "E-Field Magnitude and Poynting Vectors in the XZ-Plane"
-            x_label = "x-position [nm]"
-            y_label = "z-position [nm]"
-            magnitudes = np.linalg.norm(sim_result.xz_profile_E_vectors, axis=-1).T.astype(np.float16)
-            x_pos = sim_result.xz_profile_x_coord
-            y_pos = sim_result.xz_profile_z_coord
-
-            trans_peaks, _ = find_peaks(sim_result.trans_mag_max_pr_lambda)
-            ref_peaks, _ = find_peaks(sim_result.ref_mag_max_pr_lambda)
-            wavelengths = lambdas[ref_peaks]
-            vector_label='Poynting vectors'
-            scale = 0.1
-
+            distance = str(5)
+            wavelengths = np.array(list(sim_result.xz_profile_E_vectors[str(5)].keys())).astype(np.float16)
             if update != "update_lambda":
-                wavelength = np.max([sim_result.trans_mag_res_lambda, sim_result.ref_mag_res_lambda])
+                wavelength = sim_result.ref_power_res_lambda
             else:
                 wavelength = self.show_wavelength
 
-            V_x = sim_result.xz_profile_P_vectors[:, :, np.argmin(np.abs(wavelengths - wavelength)), 0]
-            V_y = sim_result.xz_profile_P_vectors[:, :, np.argmin(np.abs(wavelengths - wavelength)), 2]
+            wavelength = wavelengths[np.argmin(np.abs(wavelengths - wavelength))]
+
+            profile_vectors = sim_result.xz_profile_E_vectors[distance][str(wavelength)]
+            profile_P_vectors = sim_result.xz_profile_P_vectors[distance][str(wavelength)]
+            magnitudes = np.linalg.norm(profile_vectors, axis=-1).T.astype(np.float16)
+
+            V_x = profile_P_vectors[:, :, 0]
+            V_y = profile_P_vectors[:, :, 2]
+            x_label = "x-position [nm]"
+            y_label = "z-position [nm]"
+            x_pos = sim_result.xz_profile_x_coord
+            y_pos = sim_result.xz_profile_z_coord
+
+            vector_label='Poynting vectors'
+            scale = 0.05
+
+            title = f"E-Field Magnitude and Poynting Vectors in the XZ-Plane at lambda={wavelength}"
 
         if plot_type == "yz_profile":
-            title = "E-Field Magnitude and Poynting Vectors in the YZ-Plane"
             x_label = "y-position [nm]"
             y_label = "z-position [nm]"
             magnitudes = np.linalg.norm(sim_result.yz_profile_E_vectors, axis=-1).T.astype(np.float16)
             x_pos = sim_result.yz_profile_y_coord
             y_pos = sim_result.yz_profile_z_coord
 
-            trans_peaks, _ = find_peaks(sim_result.trans_mag_max_pr_lambda)
-            ref_peaks, _ = find_peaks(sim_result.ref_mag_max_pr_lambda)
-            wavelengths = lambdas[ref_peaks]
             vector_label = 'Poynting vectors'
             scale = 0.1
 
             if update != "update_lambda":
-                wavelength = np.max([sim_result.trans_mag_res_lambda, sim_result.ref_mag_res_lambda])
+                wavelength = sim_result.ref_power_res_lambda
             else:
                 wavelength = self.show_wavelength
+
+            # Fetch resonances for both transmission and reflection
+            trans_mag_res_lambdas, _ = SimulationBase._get_resonance(
+                lambdas,
+                sim_result.trans_mag_max_pr_lambda,
+                resonance_type="reflection",
+                nr_peaks=3
+            )
+            ref_mag_res_lambdas, _ = SimulationBase._get_resonance(
+                lambdas,
+                sim_result.ref_mag_max_pr_lambda,
+                resonance_type="reflection",
+                nr_peaks=3
+            )
+            # Find the reflection peaks
+            ref_peak_lambdas, _ = SimulationBase._get_resonance(
+                lambdas, sim_result.ref_powers, resonance_type="reflection", nr_peaks=3
+            )
+            # Find the transmission peaks
+            trans_peak_lambdas, _ = SimulationBase._get_resonance(
+                lambdas, sim_result.trans_powers, resonance_type="transmission", nr_peaks=3
+            )
+
+            # Combine all resonance peak wavelengths and ensure uniqueness
+            wavelengths = np.unique(np.concatenate((
+                trans_mag_res_lambdas, ref_mag_res_lambdas, ref_peak_lambdas, trans_peak_lambdas
+            )))
+
+            title = f"E-Field Magnitude and Poynting Vectors in the YZ-Plane at lambda={wavelengths[np.argmin(np.abs(wavelengths - wavelength))]}"
 
             V_x = sim_result.yz_profile_P_vectors[:, :, np.argmin(np.abs(wavelengths - wavelength)), 1]
             V_y = sim_result.yz_profile_P_vectors[:, :, np.argmin(np.abs(wavelengths - wavelength)), 2]
@@ -338,18 +376,18 @@ class PlotCanvas(FigureCanvas):
 
         # Create a meshgrid for the x and y positions (which might be irregular)
         X, Y = np.meshgrid(x_pos, y_pos)
-
         self.displayed_wavelength = wavelength
 
         try:
             # Use pcolormesh instead of imshow to account for non-uniform grid spacing
             c = self.axes.pcolormesh(
                 X, Y,  # Meshgrid for non-uniform grid
-                magnitudes[:][:][np.argmin(np.abs(wavelengths - wavelength))],  # The heatmap data
+                magnitudes,  # The heatmap data
                 shading='auto',  # Ensure smooth shading
                 cmap='viridis'  # Choose a suitable colormap
             )
-        except:
+        except Exception as e:
+            print(e)
             # Use pcolormesh instead of imshow to account for non-uniform grid spacing
             c = self.axes.imshow(
                 x_pos, y_pos,  # Meshgrid for non-uniform grid
@@ -468,11 +506,12 @@ class PlotCanvas(FigureCanvas):
         last_clicked = clicked_data["last_clicked"]
 
         # Check if anything should be plotted. If not, return
-        if all([column == noe for column, noe in zip(clicked_columns, ["Struct. 1 x-span", "Struct. 1 z-span"])]):
+        if last_clicked["column_name"] == "Struct. 1 x-span":
             self._plot_profile(
                 sim_result=last_clicked["result"],
                 plot_type="xz_profile", update=update
             )
+            return
         elif all([column == noe for column, noe in zip(clicked_columns, ["Struct. 1 y-span", "Struct. 1 z-span"])]):
             self._plot_profile(
                 sim_result=last_clicked["result"],
@@ -1044,6 +1083,380 @@ class DatabaseViewer(QMainWindow):
         window.show()
         sys.exit(app.exec())
 
-if __name__ == "__main__":
 
-    DatabaseViewer.open_db_viewer("PZT Simulation Database")
+class DatabasePlotter(DatabaseHandler):
+
+    def __init__(self, database_name: str):
+        super().__init__(database_name)
+
+    @staticmethod
+    def setup_plot_style() -> None:
+        """Sets up the plot aesthetics for a scientific publication look."""
+        plt.style.use('ggplot')  # You can replace with 'bmh' or others
+        plt.rcParams.update({
+            'font.family': 'serif',  # Use a serif font like Times New Roman
+            'font.size': 12,
+            'axes.labelsize': 14,
+            'axes.titlesize': 16,
+            'legend.fontsize': 12,
+            'xtick.labelsize': 12,
+            'ytick.labelsize': 12,
+            'lines.linewidth': 2,
+            'lines.markersize': 6,
+            'figure.figsize': (8, 6),
+            'savefig.format': 'png',
+            'savefig.bbox': 'tight'
+        })
+
+    @staticmethod
+    def plot_spectrum(ax, lambdas, powers, label, color, linestyle='-', marker=None) -> None:
+        """Plots a spectrum on the given axis."""
+        ax.plot(lambdas, powers, label=label, color=color, linestyle=linestyle, marker=marker, markersize=4)
+
+    @staticmethod
+    def save_plot_if_needed(folder_name: str | None, file_name: str | None) -> None:
+        """Saves the plot if folder_name and file_name are provided."""
+        if folder_name and file_name:
+            folder_path = os.path.join("../Saved_plots", folder_name)
+            if not os.path.exists(folder_path):
+                os.makedirs(folder_path)
+                print(f"Created folder: {folder_path}")
+
+            file_path = os.path.join(folder_path, file_name)
+            if os.path.exists(file_path):
+                user_input = input(f"The file '{file_name}' already exists. Overwrite? (y/n): ").lower()
+                if user_input != 'y':
+                    print("Plot not saved. Overwrite canceled.")
+                    plt.show()
+                    return
+
+            plt.savefig(file_path, dpi=300, bbox_inches='tight')
+            print(f"Plot saved as '{file_path}'")
+
+    def spectrum_plot(self,
+                      result_ids: List[int],
+                      plot_type: Literal["reflection", "transmission", "reflection and transmission"],
+                      folder_name: str | None = None,
+                      file_name: str | None = None,
+                      open_plot: bool = True,
+                      vlines: List[float] | None = None) -> None:
+        """
+        Plots the spectrum (reflection, transmission, or both) for the specified result IDs.
+
+        Args:
+            result_ids (List[int]): List of result IDs to plot.
+            plot_type (str): 'reflection', 'transmission', or 'both'.
+        """
+        results = self.get_entries_by_ids(result_ids)
+        self.setup_plot_style()
+
+        fig, ax = plt.subplots()
+        colors = plt.cm.tab10(np.linspace(0, 1, len(results)))
+
+        for idx, (result, color) in enumerate(zip(results, colors)):
+            lambdas = result.lambdas
+
+            if plot_type == 'reflection':
+                self.plot_spectrum(ax, lambdas, result.ref_powers, f'Periodicity: {result.fdtd_xspan} nm', color)
+            elif plot_type == 'transmission':
+                self.plot_spectrum(ax, lambdas, result.trans_powers, f'Periodicity: {result.fdtd_xspan} nm', color)
+            elif plot_type == 'reflection and transmission':
+                self.plot_spectrum(ax, lambdas, result.ref_powers, 'Reflection', color, linestyle='--')
+                self.plot_spectrum(ax, lambdas, result.trans_powers, 'Transmission', color, linestyle=':')
+                self.plot_spectrum(ax, lambdas, result.ref_powers + result.trans_powers, 'Refl. + Trans.', color)
+
+        if vlines is not None:
+            for x in vlines:
+                print(x)
+                ax.axvline(x=x, color='black', linestyle='--', linewidth=1, label=None)
+
+        ax.set_xlabel(r'Wavelength $\lambda$ [nm]', fontsize=14, labelpad=10)
+        ax.set_ylabel(f'{plot_type.capitalize()} Power', fontsize=14, labelpad=10)
+        ax.set_title(f'{plot_type.capitalize()} Spectrum', fontsize=16, pad=15)
+
+        ax.grid(True, which='major', linestyle='-', linewidth=1, alpha=1)
+        ax.tick_params(which='major', length=6, width=1, direction='in')
+        ax.tick_params(which='minor', length=4, width=0.7, direction='in')
+        ax.minorticks_on()
+        ax.set_xlim(
+            [min(min(result.lambdas) for result in results) - 10, max(max(result.lambdas) for result in results) + 10])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.legend(loc='best', frameon=False)
+        plt.tight_layout()
+
+        self.save_plot_if_needed(folder_name, file_name)
+
+        if open_plot:
+            plt.show()
+
+    def plot_profile(self,
+                     result_id: int,
+                     plot_type: Literal["reflection", "transmission", "xz plane", "yz plane"],
+                     distance: float,
+                     input_wavelength: float | Literal["ref res", "trans res", "ref mag res", "trans mag res"] | None = None,
+                     show_vectors: bool = False,
+                     vector_scale: float = 1,
+                     vector_steps: int = 1,
+                     vector_width: float = 0.0005,
+                     folder_name: str | None = None,
+                     file_name: str | None = None,
+                     open_plot: bool = True,
+                     vlines: list[float] = None,
+                     show_title: bool = True,
+                     legend: bool = True,
+                     vector_alpha: float = 1.0) -> None:
+
+        self.setup_plot_style()
+
+        # Fetch the result
+        result = self.get_entries_by_ids([result_id])[0]
+
+        # Positions
+        if plot_type == "reflection" or plot_type == "transmission":
+            x_pos = result.profile_x
+            y_pos = result.profile_y
+        elif plot_type == "xz plane":
+            x_pos = result.xz_profile_x_coord
+            y_pos = result.xz_profile_z_coord
+        elif plot_type == "yz plane":
+            x_pos = result.yz_profile_y_coord
+            y_pos = result.yz_profile_z_coord
+
+        if plot_type == "reflection":
+
+            wavelengths = np.array(  # Fetch the wavelength for which the profile vectors are available
+                list(
+                    result.ref_profile_vectors[str(distance)].keys()
+                )
+            ).astype(np.float16)
+
+            if input_wavelength is None:
+                wavelength = wavelengths[  # From the list of available wavelength data, fetch the reflection resonance
+                    np.argmin(
+                        np.abs(
+                            wavelengths - result.ref_power_res_lambda
+                        )
+                    )
+                ]
+            elif isinstance(input_wavelength, str):
+
+                target = None
+
+                if input_wavelength == "ref res":
+                    target = result.ref_power_res_lambda
+                elif input_wavelength == "trans res":
+                    target = result.trans_power_res_lambda
+                elif input_wavelength == "ref mag res":
+                    target = result.ref_mag_res_lambda
+                elif input_wavelength == "trans mag res":
+                    target = result.trans_mag_res_lambda
+
+                if target is None:
+                    target = 0
+
+                wavelength = wavelengths[  # Fetch the wavelength closest to the target wavelength
+                    np.argmin(
+                        np.abs(
+                            wavelengths - target
+                        )
+                    )
+                ]
+            else:
+                wavelength = wavelengths[  # Fetch the wavelength closest to the input wavelength
+                    np.argmin(
+                        np.abs(
+                            wavelengths - input_wavelength
+                        )
+                    )
+                ]
+
+            # Fetch the coorect field profile and calculate magnitudes
+            profile_vectors = result.ref_profile_vectors[str(distance)][str(wavelength)]
+            magnitudes = np.linalg.norm(profile_vectors, axis=-1).T.astype(np.float16)
+
+            # Get he vector field
+            V_x = profile_vectors[:, :, 0]
+            V_y = profile_vectors[:, :, 1]
+
+        elif plot_type == "transmission":
+
+            wavelengths = np.array(  # Fetch the wavelength for which the profile vectors are available
+                list(
+                    result.trans_profile_vectors[str(distance)].keys()
+                )
+            ).astype(np.float16)
+
+            if input_wavelength is None:
+                wavelength = wavelengths[  # From the list of available wavelength data, fetch the reflection resonance
+                    np.argmin(
+                        np.abs(
+                            wavelengths - result.ref_power_res_lambda
+                        )
+                    )
+                ]
+
+            elif isinstance(input_wavelength, str):
+
+                target = None
+
+                if input_wavelength == "ref res":
+                    target = result.ref_power_res_lambda
+                elif input_wavelength == "trans res":
+                    target = result.trans_power_res_lambda
+                elif input_wavelength == "ref mag res":
+                    target = result.ref_mag_res_lambda
+                elif input_wavelength == "trans mag res":
+                    target = result.trans_mag_res_lambda
+
+                if target is None:
+                    target = 0
+
+                wavelength = wavelengths[  # Fetch the wavelength closest to the target wavelength
+                    np.argmin(
+                        np.abs(
+                            wavelengths - target
+                        )
+                    )
+                ]
+            else:
+                wavelength = wavelengths[  # Fetch the wavelength closest to the input wavelength
+                    np.argmin(
+                        np.abs(
+                            wavelengths - input_wavelength
+                        )
+                    )
+                ]
+
+            # Fetch the coorect field profile and calculate magnitudes
+            profile_vectors = result.trans_profile_vectors[str(distance)][str(wavelength)]
+            magnitudes = np.linalg.norm(profile_vectors, axis=-1).T.astype(np.float16)
+
+            # Get he vector field
+            V_x = profile_vectors[:, :, 0]
+            V_y = profile_vectors[:, :, 1]
+
+        elif plot_type == "xz plane":
+
+            wavelengths = np.array(  # Fetch the wavelength for which the profile vectors are available
+                list(
+                    result.xz_profile_E_vectors[str(distance)].keys()
+                )
+            ).astype(np.float16)
+
+            if input_wavelength is None:
+                target = result.ref_power_res_lambda
+                if target is None: target = 0
+                wavelength = wavelengths[  # From the list of available wavelength data, fetch the reflection resonance
+                    np.argmin(
+                        np.abs(
+                            wavelengths - target
+                        )
+                    )
+                ]
+            elif isinstance(input_wavelength, str):
+
+                target = None
+
+                if input_wavelength == "ref res":
+                    target = result.ref_power_res_lambda
+                elif input_wavelength == "trans res":
+                    target = result.trans_power_res_lambda
+                elif input_wavelength == "ref mag res":
+                    target = result.ref_mag_res_lambda
+                elif input_wavelength == "trans mag res":
+                    target = result.trans_mag_res_lambda
+
+                if target is None:
+                    target = 0
+
+                wavelength = wavelengths[  # Fetch the wavelength closest to the target wavelength
+                    np.argmin(
+                        np.abs(
+                            wavelengths - target
+                        )
+                    )
+                ]
+            else:
+                wavelength = wavelengths[  # Fetch the wavelength closest to the input wavelength
+                    np.argmin(
+                        np.abs(
+                            wavelengths - input_wavelength
+                        )
+                    )
+                ]
+
+            # Fetch the coorect field profile and calculate magnitudes
+            profile_vectors = result.xz_profile_P_vectors[str(distance)][str(wavelength)]
+            magnitudes = np.linalg.norm(result.xz_profile_E_vectors[str(distance)][str(wavelength)], axis=-1).T.astype(np.float16)
+
+            # Get he vector field
+            V_x = profile_vectors[:, :, 0]
+            V_y = profile_vectors[:, :, 2]
+
+        if plot_type == "reflection" or plot_type == "transmission":
+            title = rf"{plot_type.capitalize()} field-map at $\lambda$ = {wavelength} nm"
+            x_label = "x-position [nm]"
+            y_label = "y-position [nm]"
+            vector_label = "E-field vectors"
+        elif plot_type == "xz plane":
+            title = rf"{plot_type.capitalize()} field-map at $\lambda$ = {wavelength} nm"
+            x_label = "x-position [nm]"
+            y_label = "y-position [nm]"
+            vector_label = "Poynting vectors"
+
+        # Create a new figure and axis for plotting
+        fig, ax = plt.subplots()
+
+        # Create meshgrid for positions
+        X, Y = np.meshgrid(x_pos, y_pos)
+
+        # Plot the heatmap using pcolormesh
+        heatmap = ax.pcolormesh(X, Y, magnitudes, shading='auto', cmap='viridis')
+        cbar = fig.colorbar(heatmap, ax=ax, label="Magnitude")
+
+        if vlines is not None:
+            for x in vlines:
+                ax.axvline(x=x, color='black', linestyle='--', linewidth=1, label=None, alpha = 0.5)
+
+        # Quiver plot for vectors (if needed)
+        if show_vectors:
+            scale = vector_scale  # Adjust as needed
+            step = vector_steps
+            X_sub = X[::step, ::step]
+            Y_sub = Y[::step, ::step]
+            V_x_sub = V_x.T[::step, ::step]
+            V_y_sub = V_y.T[::step, ::step]
+
+            ax.quiver(
+                X_sub,
+                Y_sub,
+                V_x_sub,
+                V_y_sub,
+                color='white',
+                scale=scale,
+                width=vector_width,
+                label=vector_label,
+                alpha=vector_alpha
+            )
+
+        # Set labels and title
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+
+        if show_title:
+            ax.set_title(title)
+
+        # Add a legend if vectors are shown
+        if show_vectors and legend:
+            ax.legend()
+
+        # Adjust layout and show the plot
+        fig.tight_layout()
+
+        self.save_plot_if_needed(folder_name, file_name)
+
+        if open_plot:
+            plt.show()
+
+

@@ -290,7 +290,8 @@ class SimulationBase(lumapi.FDTD):
     # Attribute slots for optimized memory usage
     __slots__ = [
         "save_path", "db", "name", "_active_meshes", "_active_structures",
-        "_global_mesh_stepsizes", "_db_save_path", "_unit_cells", "_film_thickness", "_comment"
+        "_global_mesh_stepsizes", "_db_save_path", "_unit_cells", "_film_thickness", "_comment",
+        "_near_field_distance"
     ]
 
     def __init__(self,
@@ -400,6 +401,9 @@ class SimulationBase(lumapi.FDTD):
 
         # Set default film thickness to 100 nm
         self._film_thickness = 100
+
+        # Set default distance between near-field monitors and the film/material surface.
+        self._near_field_distance = 10
 
         # If not initialized from base, create and save the base configuration
         if not from_base:
@@ -716,16 +720,48 @@ class SimulationBase(lumapi.FDTD):
 
                 # Compute maximum electric field magnitude and resonances
                 mag_max_pr_lambda = self._get_max_e_pr_lambda(
-                    np.linalg.norm(profile_vectors, axis=-1).T.astype(np.float16))
+                    np.linalg.norm(profile_vectors, axis=-1).astype(np.float16))
                 mag_res_lambdas, mag_ress = self._get_resonance(lambdas, mag_max_pr_lambda,
-                                                                resonance_type=resonance_type, allow_multiple=True)
+                                                                resonance_type=resonance_type, nr_peaks=3)
                 main_idx = np.argmax(mag_ress)
                 mag_res_lambda, mag_res = mag_res_lambdas[main_idx], mag_ress[main_idx]
 
+                # Fetch the peaks of the reflection spectrum
+                # Handle previous results if provided
+                if prev_profile_results is not None:
+                    results["ref_powers"] = prev_profile_results.get("ref_powers", None)
+                    results["trans_powers"] = prev_profile_results.get("trans_powers", None)
+
+                if resonance_type == "reflection":
+                    # Find the reflection peaks
+                    far_field_peak_lambdas, _ = self._get_resonance(
+                        lambdas, results["ref_powers"], resonance_type="reflection", nr_peaks=3
+                    )
+                elif resonance_type == "transmission":
+                    # Find the transmission peaks
+                    far_field_peak_lambdas, _ = self._get_resonance(
+                        lambdas, results["trans_powers"], resonance_type="transmission", nr_peaks=3
+                    )
+
+                # Combine all resonance peak wavelengths and ensure uniqueness
+                combined_resonance_lambdas = np.unique(np.concatenate((
+                    mag_res_lambdas, far_field_peak_lambdas
+                )))
+
                 # Optionally filter for database storage
                 if to_db:
-                    mask = np.isin(lambdas, mag_res_lambdas)
-                    profile_vectors = profile_vectors[:, :, mask]
+
+                    # Convert into dictionaries with the near-field monitor distance as the keys
+                    profile_vectors = {
+                        str(self._near_field_distance): {
+                            str(wavelength): profile_vectors[:, :, np.argmin(abs(lambdas-wavelength))]
+                            for wavelength in combined_resonance_lambdas
+                        }
+                    }
+
+                    mag_max_pr_lambda = {
+                        str(self._near_field_distance): mag_max_pr_lambda
+                    }
 
                 return profile_vectors, mag_max_pr_lambda, mag_res_lambda, mag_res
 
@@ -769,28 +805,55 @@ class SimulationBase(lumapi.FDTD):
                 if prev_profile_results is not None:
                     results["ref_mag_max_pr_lambda"] = prev_profile_results.get("ref_mag_max_pr_lambda", None)
                     results["trans_mag_max_pr_lambda"] = prev_profile_results.get("trans_mag_max_pr_lambda", None)
+                    results["ref_powers"] = prev_profile_results.get("ref_powers", None)
+                    results["trans_powers"] = prev_profile_results.get("trans_powers", None)
 
                 # Fetch resonances for both transmission and reflection
                 trans_mag_res_lambdas, _ = self._get_resonance(
                     lambdas,
-                    results["trans_mag_max_pr_lambda"],
+                    results["trans_mag_max_pr_lambda"][str(self._near_field_distance)],
                     resonance_type="reflection",
-                    allow_multiple=True
+                    nr_peaks=3
                 )
+
                 ref_mag_res_lambdas, _ = self._get_resonance(
                     lambdas,
-                    results["ref_mag_max_pr_lambda"],
+                    results["ref_mag_max_pr_lambda"][str(self._near_field_distance)],
                     resonance_type="reflection",
-                    allow_multiple=True
+                    nr_peaks=3
                 )
+
+                # Find the reflection peaks
+                ref_peak_lambdas, _ = self._get_resonance(
+                    lambdas, results["ref_powers"], resonance_type="reflection", nr_peaks=3
+                )
+
+                # Find the transmission peaks
+                trans_peak_lambdas, _ = self._get_resonance(
+                    lambdas, results["trans_powers"], resonance_type="transmission", nr_peaks=3
+                )
+
+                # Combine all resonance peak wavelengths and ensure uniqueness
+                combined_resonance_lambdas = np.unique(
+                    np.concatenate((trans_mag_res_lambdas, ref_mag_res_lambdas, ref_peak_lambdas, trans_peak_lambdas)))
 
                 # Optionally filter for database storage
                 if to_db:
-                    ref_mask = np.isin(lambdas, ref_mag_res_lambdas)
-                    trans_mask = np.isin(lambdas, trans_mag_res_lambdas)
-                    combined_mask = trans_mask | ref_mask  # Combine masks to filter data
-                    E_vectors = E_vectors[:, :, combined_mask]
-                    P_vectors = P_vectors[:, :, combined_mask]
+
+                    # Create dictionaries with the near-field monitor distance as the keys
+                    E_vectors = {
+                        str(self._near_field_distance): {
+                            str(wavelength): E_vectors[:, :, np.argmin(np.abs(lambdas - wavelength))]
+                            for wavelength in combined_resonance_lambdas
+                        }
+                    }
+
+                    P_vectors = {
+                        str(self._near_field_distance): {
+                            str(wavelength): P_vectors[:, :, np.argmin(np.abs(lambdas - wavelength))]
+                            for wavelength in combined_resonance_lambdas
+                        }
+                    }
 
                 return E_vectors, P_vectors, (E_results["x"] * 1e9).astype(np.float16).flatten(), (
                         E_results["z"] * 1e9).astype(np.float16).flatten()
@@ -1006,9 +1069,12 @@ class SimulationBase(lumapi.FDTD):
 
             # Create a new group for this structure type
             self.addgroup(name=f"{structure_key}_group")
+            self.set("use relative coordinates", False)  # Use absolute coordinates
+            self.set("x", 0)
+            self.set("y", 0)
+            self.set("z", 0)
 
             # Set mesh parameters
-            self.set("use relative coordinates", False)  # Use absolute coordinates
             self.addmesh()  # Create the mesh
             self.set("name", f"mesh_{structure_type_id}")  # Name the mesh
             self.set("based on a structure", True)  # Indicate this mesh is based on a structure
@@ -1274,7 +1340,7 @@ class SimulationBase(lumapi.FDTD):
 
     @staticmethod
     def _get_resonance(
-            wavelengths: np.ndarray, powers: np.ndarray, resonance_type: str, allow_multiple: bool = False) \
+            wavelengths: np.ndarray, powers: np.ndarray, resonance_type: str, nr_peaks: int | None = None) \
             -> tuple[None, None] | tuple[np.ndarray, np.ndarray]:
         """
         Locates the main resonance peak in the result signals based on the specified resonance type.
@@ -1283,7 +1349,7 @@ class SimulationBase(lumapi.FDTD):
             wavelengths (np.ndarray): The array of wavelengths corresponding to the powers.
             powers (np.ndarray): The array of power values from the simulation.
             resonance_type (str): The type of resonance to locate, either "reflection" or "transmission".
-            allow_multiple (bool): Flag indicating whether to return all resonance peaks (default is False).
+            nr_peaks (bool): Flag indicating whether to return all resonance peaks (default is False).
 
         Returns:
             tuple[None, None] | tuple[np.ndarray, np.ndarray]:
@@ -1315,9 +1381,23 @@ class SimulationBase(lumapi.FDTD):
         filtered_powers = powers[mask] if resonance_type == "reflection" else -powers[mask]
         filtered_wavelengths = wavelengths[mask]
 
-        if allow_multiple:
-            # Return all resonance wavelengths and powers if requested
-            return filtered_wavelengths, filtered_powers
+        if nr_peaks is not None:
+            if nr_peaks > len(peaks):
+                nr_peaks = len(peaks)
+
+            if resonance_type == "reflection":
+                # Sort the peaks by the magnitude of power (descending) and get the top_n peaks
+                sorted_indices = np.argsort(filtered_powers)[::-1]  # Sort in descending order
+                top_indices = sorted_indices[:nr_peaks]  # Get the indices of the top_n largest peaks
+            else:
+                sorted_indices = np.argsort(filtered_powers)  # Sort in ascending order
+                top_indices = sorted_indices[:nr_peaks]  # Get the indices of the top_n largest peaks
+
+            # Extract the top_n resonance wavelengths and powers
+            top_res_wavelengths = filtered_wavelengths[top_indices]
+            top_res_powers = filtered_powers[top_indices]
+
+            return top_res_wavelengths, top_res_powers
 
         # Determine the main resonance peak based on the specified type
         main_res_idx = np.argmax(filtered_powers) if resonance_type == "reflection" else np.argmin(filtered_powers)
@@ -1344,7 +1424,7 @@ class SimulationBase(lumapi.FDTD):
         """
 
         # Find the maximum E-field magnitude across the (x, y) positions for each wavelength
-        max_magnitudes = np.max(magnitudes, axis=(1, 2))
+        max_magnitudes = np.max(magnitudes, axis=(0, 1))
 
         return max_magnitudes
 
@@ -1684,6 +1764,32 @@ class SimulationBase(lumapi.FDTD):
         # Update the FDTD spans to account for the new wavelength range and film thickness
         self.set_FDTD_spans((None, None, max_wavelength * 2 + thickness))
 
+    def set_near_field_distance(self, distance: int | float | np.float16) -> None:
+        """
+        Set the distance between the reflection and transmission near-field monitors and the tallest/lowest
+        point of the structure.
+
+        This method adjusts the distance from the structure to the near-field monitors in the FDTD simulation
+        environment by updating the internal `_near_field_distance` variable. After updating the distance,
+        the method calls `set_FDTD_spans()` to reposition the monitors accordingly.
+
+        Parameters:
+        -----------
+        distance : int, float, np.float16
+            The desired distance between the structure and the near-field monitors. Accepts both integer and
+            floating-point values, including NumPy's float16 for efficient memory usage.
+
+        Returns:
+        --------
+        None
+        """
+
+        # Update the internal near-field distance variable
+        self._near_field_distance = distance
+
+        # Adjust FDTD spans to reposition the monitors
+        self.set_FDTD_spans((None, None, None))
+
     def run_and_save_to_db(self) -> None:
         """
         Runs the simulation and saves the results to the database.
@@ -1810,6 +1916,7 @@ class SimulationBase(lumapi.FDTD):
                 return
 
             except Exception as e:
+                raise e
                 print(f"Simulation attempt {i + 1} failed: '{e}'. Retrying...")
 
         # Switch to layout and print a message saying the simulation was aborted
@@ -2001,6 +2108,21 @@ class SimulationBase(lumapi.FDTD):
         # Retrieve the number of instances for the specified structure type
         num_instances = self._active_structures[f"structure_{structure_type_id}"]["nr"]
 
+        # Check if any of the coordinates passed are None-type
+        if any([coordinate is None for coordinate in position]):
+            prev_position = self._get_structure_positions(structure_type_id)
+
+            new_position = []
+            for coordinate, prev_coordinate in zip(position, prev_position):
+                if coordinate is not None:
+                    new_position.append(coordinate)
+                else:
+                    new_position.append(prev_coordinate)
+        else:
+            new_position = position
+
+        print(new_position)
+
         # Iterate over each instance of the structure to set its position
         for i in range(1, num_instances + 1):
             # Construct the name for the current structure instance based on its ID
@@ -2014,21 +2136,21 @@ class SimulationBase(lumapi.FDTD):
             self.setnamed(
                 structure_name,
                 "x",
-                float(position[0]) * 1e-9  # Convert position to meters (from nanometers)
+                float(new_position[0]) * 1e-9  # Convert position to meters (from nanometers)
             )
 
             # Set the new y-coordinate for the current structure instance
             self.setnamed(
                 structure_name,
                 "y",
-                float(position[1]) * 1e-9  # Convert position to meters (from nanometers)
+                float(new_position[1]) * 1e-9  # Convert position to meters (from nanometers)
             )
 
             # Set the new z-coordinate for the current structure instance
             self.setnamed(
                 structure_name,
                 "z",
-                float(position[2]) * 1e-9  # Convert position to meters (from nanometers)
+                float(new_position[2]) * 1e-9  # Convert position to meters (from nanometers)
             )
 
     def addrect(
@@ -2071,6 +2193,7 @@ class SimulationBase(lumapi.FDTD):
         # Add the structure to the simulation
         self._add_structure(structure_type_id, hole_in=hole_in)
 
+        # Fetch the instance number of this structure
         structure_nr = self._active_structures[f"structure_{structure_type_id}"]["nr"]
 
         # Fetch parameters
@@ -2078,32 +2201,47 @@ class SimulationBase(lumapi.FDTD):
         x, y, z = position
         x_span, y_span, z_span = spans
 
+        # Create a new group for this structure instance and it's meshes
+        self.addgroup(name=f"structure_{structure_type_id}_{structure_nr}")
+        self.select(f"structure_{structure_type_id}_{structure_nr}")  # Select the group
+        self.addtogroup(f"structure_{structure_type_id}_group")  # Add it to the parent group
+        self.select(  # Select the same subgroup that's now a part of the parent group
+            f"structure_{structure_type_id}_group::structure_{structure_type_id}_{structure_nr}"
+        )
+        self.set("use relative coordinates", False)  # Set absolute coordinates
+        self.set("x", 0)  # Set the position of the group in the center of the simulation.
+        self.set("y", 0)
+        self.set("z", 0)
+
         # Create the rectangle structure
         super().addrect(
-            name=rect_name, x=float(x) * 1e-9, y=float(y) * 1e-9, z=float(z) * 1e-9,
-            x_span=float(x_span) * 1e-9, y_span=float(y_span) * 1e-9, z_span=float(z_span) * 1e-9, material=material
+            name=rect_name,
+            x=float(x) * 1e-9,
+            y=float(y) * 1e-9,
+            z=float(z) * 1e-9,
+            x_span=float(x_span) * 1e-9,
+            y_span=float(y_span) * 1e-9,
+            z_span=float(z_span) * 1e-9,
+            material=material
         )
 
-
-        # Create a group and add structure to it
-        self.addgroup(name=f"structure_{structure_type_id}_{structure_nr}")
-        self.select(rect_name)
-        self.addtogroup(f"structure_{structure_type_id}_{structure_nr}")
-        self.select(f"structure_{structure_type_id}_{structure_nr}")
-        self.addtogroup(f"structure_{structure_type_id}_group")
-
+        # Update the shape parameter for the newly added structure
         self._active_structures[f"structure_{structure_type_id}"]["shape"] = "rect"
 
-        # Set relative coordinates False
-        self.setnamed(
-            f"structure_{structure_type_id}_group::structure_{structure_type_id}_{structure_nr}",
-            "use relative coordinates",
-            False
-        )
+        # Add the rectangle to it's parent group
+        self.addtogroup(f"structure_{structure_type_id}_group::structure_{structure_type_id}_{structure_nr}")
 
+        # Set absolute coordinate for the structure as a part of it's parent groups
+        self.select(f"structure_{structure_type_id}_group"
+                    f"::structure_{structure_type_id}_{structure_nr}"
+                    f"::structure_{structure_type_id}")
+        self.set("use relative coordinates", False)
+
+        # Create edge mesh cubes if specified
         if edge_mesh_stepsize is not None:
             self._create_edge_meshes(edge_mesh_size, structure_type_id, edge_mesh_stepsize, structure_nr)
 
+        # If specified, disable the mesh that covers the structure.
         if not bulk_mesh_enabled:
             self.setnamed(f"structure_{structure_type_id}_group::mesh_{structure_type_id}", "enabled", False)
 
@@ -2153,14 +2291,18 @@ class SimulationBase(lumapi.FDTD):
         # Create the circular structure
         super().addcircle(
             name=circle_name,
-            x=float(x) * 1e-9,
-            y=float(y) * 1e-9,
-            z=float(z) * 1e-9,
+            x=0,
+            y=0,
+            z=0,
             radius=float(x_span) * 1e-9,
             z_span=float(z_span) * 1e-9,
             material=material
         )
 
+        # Set positions. They have to be initialized to zero, or else everything becomes wierd
+        self.set("x", float(x) * 1e-9)
+        self.set("y", float(x) * 1e-9)
+        self.set("z", float(x) * 1e-9)
 
         # Set as ellipsoid (circular structure)
         self.setnamed(circle_name, "make ellipsoid", True)
@@ -2695,7 +2837,9 @@ class SimulationBase(lumapi.FDTD):
         # Update the dimensions of the reflection profile monitor
         self.setnamed("ref_profile_monitor", "x span", float(FDTD_xspan) * 1e-9)
         self.setnamed("ref_profile_monitor", "y span", float(FDTD_yspan) * 1e-9)
-        self.setnamed("ref_profile_monitor", "z", float(self._film_thickness + 10) * 1e-9)  # Position in z
+        self.setnamed(
+            "ref_profile_monitor", "z", float(self._film_thickness + self._near_field_distance) * 1e-9
+        )
 
         # Update the dimensions of the transmission power monitor
         self.setnamed("trans_power_monitor", "x span", float(FDTD_xspan) * 1e-9)
@@ -2704,13 +2848,18 @@ class SimulationBase(lumapi.FDTD):
         # Update the dimensions of the transmission profile monitor
         self.setnamed("trans_profile_monitor", "x span", float(FDTD_xspan) * 1e-9)
         self.setnamed("trans_profile_monitor", "y span", float(FDTD_yspan) * 1e-9)
+        self.setnamed("trans_profile_monitor", "z", float(-self._near_field_distance) * 1e-9)
 
         # Update the dimensions of the xz and yz profile monitors
         self.setnamed("xz_profile_monitor", "x span", float(FDTD_xspan) * 1e-9)
-        self.setnamed("xz_profile_monitor", "z span", float(self._film_thickness + 20) * 1e-9)
+        self.setnamed(
+            "xz_profile_monitor", "z span", float(self._film_thickness + self._near_field_distance * 2) * 1e-9
+        )
         self.setnamed("xz_profile_monitor", "z", (float(self._film_thickness) / 2) * 1e-9)
         self.setnamed("yz_profile_monitor", "y span", float(FDTD_yspan) * 1e-9)
-        self.setnamed("yz_profile_monitor", "z span", float(self._film_thickness + 20) * 1e-9)
+        self.setnamed(
+            "yz_profile_monitor", "z span", float(self._film_thickness + self._near_field_distance * 2) * 1e-9
+        )
         self.setnamed("yz_profile_monitor", "z", (float(self._film_thickness)/2) * 1e-9)
 
         # Move the reflection power monitor above the source
