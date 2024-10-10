@@ -1139,7 +1139,8 @@ class DatabasePlotter(DatabaseHandler):
                       folder_name: str | None = None,
                       file_name: str | None = None,
                       open_plot: bool = True,
-                      vlines: List[float] | None = None) -> None:
+                      vlines: List[float] | None = None,
+                      show_title: bool = True) -> None:
         """
         Plots the spectrum (reflection, transmission, or both) for the specified result IDs.
 
@@ -1157,9 +1158,9 @@ class DatabasePlotter(DatabaseHandler):
             lambdas = result.lambdas
 
             if plot_type == 'reflection':
-                self.plot_spectrum(ax, lambdas, result.ref_powers, f'Periodicity: {result.fdtd_xspan} nm', color)
+                self.plot_spectrum(ax, lambdas, result.ref_powers, f'Periodicity: {result.fdtd_xspan/2} nm', color)
             elif plot_type == 'transmission':
-                self.plot_spectrum(ax, lambdas, result.trans_powers, f'Periodicity: {result.fdtd_xspan} nm', color)
+                self.plot_spectrum(ax, lambdas, result.trans_powers, f'Periodicity: {result.fdtd_xspan/2} nm', color)
             elif plot_type == 'reflection and transmission':
                 self.plot_spectrum(ax, lambdas, result.ref_powers, 'Reflection', color, linestyle='--')
                 self.plot_spectrum(ax, lambdas, result.trans_powers, 'Transmission', color, linestyle=':')
@@ -1167,12 +1168,12 @@ class DatabasePlotter(DatabaseHandler):
 
         if vlines is not None:
             for x in vlines:
-                print(x)
                 ax.axvline(x=x, color='black', linestyle='--', linewidth=1, label=None)
 
         ax.set_xlabel(r'Wavelength $\lambda$ [nm]', fontsize=14, labelpad=10)
         ax.set_ylabel(f'{plot_type.capitalize()} Power', fontsize=14, labelpad=10)
-        ax.set_title(f'{plot_type.capitalize()} Spectrum', fontsize=16, pad=15)
+        if show_title:
+            ax.set_title(f'{plot_type.capitalize()} Spectrum', fontsize=16, pad=15)
 
         ax.grid(True, which='major', linestyle='-', linewidth=1, alpha=1)
         ax.tick_params(which='major', length=6, width=1, direction='in')
@@ -1190,6 +1191,8 @@ class DatabasePlotter(DatabaseHandler):
         if open_plot:
             plt.show()
 
+        plt.close()
+
     def plot_profile(self,
                      result_id: int,
                      plot_type: Literal["reflection", "transmission", "xz plane", "yz plane"],
@@ -1203,9 +1206,14 @@ class DatabasePlotter(DatabaseHandler):
                      file_name: str | None = None,
                      open_plot: bool = True,
                      vlines: list[float] = None,
+                     vgaps: list[list[tuple]] = None,
+                     hlines: list[float] = None,
+                     hgaps: list[list[tuple]] = None,
                      show_title: bool = True,
                      legend: bool = True,
-                     vector_alpha: float = 1.0) -> None:
+                     vector_alpha: float = 1.0,
+                     linecolor: str = "black",
+                     linealpha: float = 0.5) -> None:
 
         self.setup_plot_style()
 
@@ -1415,9 +1423,71 @@ class DatabasePlotter(DatabaseHandler):
         heatmap = ax.pcolormesh(X, Y, magnitudes, shading='auto', cmap='viridis')
         cbar = fig.colorbar(heatmap, ax=ax, label="Magnitude")
 
+
+        # Assuming ax is your axes object
+        if vgaps is None:
+            vgaps = [[] for _ in vlines]  # Create an empty list for each vline if vgaps is not provided
+
+        if hgaps is None:
+            hgaps = [[] for _ in
+                     hlines] if hlines is not None else []  # Create an empty list for each hline if hgaps is not provided
+
         if vlines is not None:
-            for x in vlines:
-                ax.axvline(x=x, color='black', linestyle='--', linewidth=1, label=None, alpha = 0.5)
+            for x, gaps in zip(vlines, vgaps):  # Loop through each x-coordinate and its corresponding gaps
+                ymin, ymax = ax.get_ylim()  # Get the y-limits of the plot
+
+                # If vgaps are provided for the current vline, draw the lines only outside the gaps
+                start_y = ymin
+                if gaps:  # Ensure that there are gaps to process
+                    for gap_start, gap_stop in gaps:
+                        # Handle special cases for "min" and "max"
+                        if gap_start == "min":
+                            gap_start = ymin
+                        if gap_stop == "max":
+                            gap_stop = ymax
+
+                        # Draw the line from start_y to the beginning of the gap
+                        if start_y < gap_start:
+                            ax.vlines(x, ymin=start_y, ymax=gap_start, color=linecolor, linestyle='--', linewidth=1,
+                                      alpha=linealpha)
+                        # Update start_y to the end of the gap
+                        start_y = gap_stop
+
+                    # Draw the final line after the last gap
+                    if start_y < ymax:
+                        ax.vlines(x, ymin=start_y, ymax=ymax, color=linecolor, linestyle='--', linewidth=1, alpha=linealpha)
+                else:
+                    # If no gaps are provided for this line, just draw the full line
+                    ax.vlines(x, ymin=ymin, ymax=ymax, color=linecolor, linestyle='--', linewidth=1, alpha=linealpha)
+
+            # Plotting horizontal lines with gaps
+            if hlines is not None:
+                for y, gaps in zip(hlines, hgaps):  # Loop through each y-coordinate and its corresponding gaps
+                    xmin, xmax = ax.get_xlim()  # Get the x-limits of the plot
+
+                    # If hgaps are provided for the current hline, draw the lines only outside the gaps
+                    start_x = xmin
+                    if gaps:  # Ensure that there are gaps to process
+                        for gap_start, gap_stop in gaps:
+                            # Handle special cases for "min" and "max"
+                            if gap_start == "min":
+                                gap_start = xmin
+                            if gap_stop == "max":
+                                gap_stop = xmax
+
+                            # Draw the line from start_x to the beginning of the gap
+                            if start_x < gap_start:
+                                ax.hlines(y, xmin=start_x, xmax=gap_start, color=linecolor, linestyle='--', linewidth=1,
+                                          alpha=linealpha)
+                            # Update start_x to the end of the gap
+                            start_x = gap_stop
+
+                        # Draw the final line after the last gap
+                        if start_x < xmax:
+                            ax.hlines(y, xmin=start_x, xmax=xmax, color=linecolor, linestyle='--', linewidth=1, alpha=linealpha)
+                    else:
+                        # If no gaps are provided for this line, just draw the full line
+                        ax.hlines(y, xmin=xmin, xmax=xmax, color=linecolor, linestyle='--', linewidth=1, alpha=linealpha)
 
         # Quiver plot for vectors (if needed)
         if show_vectors:
@@ -1458,5 +1528,7 @@ class DatabasePlotter(DatabaseHandler):
 
         if open_plot:
             plt.show()
+
+        plt.close()
 
 
