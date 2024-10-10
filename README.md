@@ -54,7 +54,7 @@ from Simulation import SimulationBase
 from DatabaseViewer import DatabaseViewer
 ```
 
-# Creating simulation enviroment
+# Creating a simulation enviroment
 
 You can create a default simulation enviroment just by constructing an object from the SimulationBase class:
 
@@ -166,6 +166,8 @@ Now, let’s create a grid of structures.
 We will use a material with data for wavelengths between 400 and 1000 nm,
 and adjust the simulation to this wavelength range. The set_global_wavelength_range() method will automatically 
 adjust the FDTD-region z-span and position along with the positions of the source and monitors.
+The structure grid is automatically created using the **create_structure_grid()** method, and each of the structures
+are automatically placed on top of the substrate.
 
 ```python
 # Create a new simulation
@@ -193,11 +195,11 @@ FDTD_y_min, FDTD_y_max = FDTD_y_min_max
 
 # Create a grid of structures
 simulation_3.create_structure_grid(
-    structure_type_id=1,
-    shape="rect",  # Can also use 'circle'
-    structure_spans=(100, 200, 150),
-    structure_material="PZT",
-    hole_in=None,
+    structure_type_id=1,  # This will be the identifier for each of the structure in the grid
+    shape="rect",  # Will produce rectangles (bars). Can also use 'circle'
+    structure_spans=(100, 200, 150),  # The dimensions of each of the structures in the grid
+    structure_material="PZT",  # Material of each of the structures in the grid.
+    hole_in=None,  # The structures in the grid are not holes in another structure.
     min_max_x=(FDTD_x_min, FDTD_x_max),  # Grid boundaries in the x-direction
     min_max_y=(FDTD_y_min, FDTD_y_max),  # Grid boundaries in the y-direction
     num_x=3,  # Number of structures along the x-direction
@@ -372,8 +374,8 @@ simulation_5.set_FDTD_spans((
 # Sweep the length of the gold bars while maintaining the separation distance
 for bar_yspan in range(150, 250, 25):  # Sweep the y-span of the gold bar
     simulation_5.set_structure_spans(
-        structure_type_id=1,
-        spans=(None, bar_yspan, None)  # Change only the y-span
+        structure_type_id=1,  # Change the spans of all structures that has this id
+        spans=(None, bar_yspan, None)  # Change only the y-span, leaving the x, and z spans unchanged
     )
 
     # Adjust the FDTD span to keep the separation distance constant
@@ -382,18 +384,25 @@ for bar_yspan in range(150, 250, 25):  # Sweep the y-span of the gold bar
     # Set a custom comment and parameter for the simulation result
     comment = ("Simulating a periodic array of gold bars. "
                "Sweeping the gold bar length while keeping the separation distance constant. "
-               "The custom parameter is the distance of material between each gold bar.")
-    custom_parameter = separation_distance  # Constant separation distance
+               "The custom parameter is the distance between the borders of each gold bar "
+               " in both the x- and y-direction.")
+    # Constant separation distance. If this changed for each sweep iteration you could calculate it.
+    custom_parameter = separation_distance  
 
     # Set the simulation comment and custom parameter
     simulation_5.set_simulation_comment(comment=comment, custom_parameter=custom_parameter)
 
-    # Save the simulation state before running it for better tracking
+    # Run the simulation and save the results to the database
     simulation_5.run_and_save_to_db()  # Run simulation and save results to database
 ```
 
 It is not neccesary to add a comment and a custom parameter, but it can be nice. If there is a parameter that doesn't
 have a default collumn in the database, you can add the custom parameter and write in the comment what it represents.
+
+Also, it's good practice to allways save the simulation geometry at the point where you would run the simulation
+and check the saved simulation file first to see if it's what you intended. Also, for sweeps it could be good to run
+the sweep halfway without running the simulation, save the simulation file and check it out to see if the sweep is working as
+intended also. After checking this you could safely run and save the simulation results to the database for each sweep iteration.
 
 # The database viewer application
 
@@ -412,6 +421,9 @@ By clicking the cells of the different results you get different plot. By holdin
 cells at the same time, which will produce different type of plots. This you can try out for yourself. 
 You can sort the values in each column by clicking the column headers. This can be quite usefull.
 
+Another nice feature is if you click the cell containing the simulation ID, the FDTD application will open that 
+simulation result's excact simulation geometry.
+
 ![Default simulation enviroment.](Example_images/db_2.png)
 
 **Disclaimer:** The database viewer is extremely wonky, and might crash randomly or suddently only give you half-results
@@ -424,10 +436,13 @@ when using the search function. If this happens, just restart it. I will fix the
 Each simulation generates a unique hash string based on parameters like structure spans and wavelength range.
 When running a simulation, the program checks if a simulation with the same hash already exists in the database.
 If found, it verifies if any new monitors have been enabled. If none are added, the program prints a message
-stating the simulation has already been saved, and it aborts the run.
+stating the simulation has already been saved, and it aborts the run. This is very usefull if you are running
+sweeps where you already have result data for parts of the sweep- Then you don't have to manually exclude those
+simulations. Just run the entire sweep range, and the program filters out the simulations you don't need to run again automatically.
 
-If a previous simulation has new monitors enabled, the program will disable existing monitors with saved results,
-run the simulation with the new monitors, and update the database entry accordingly. This approach saves time and
+If a previous simulation with the same geometry has already been saved to the database, but the simulation you're trying to run
+has new monitors enabled, the program will disable the monitors which data is already saved, running the simulation with the new monitors only.
+After the simulation is finished, the new monitor data will be added to the previous database entry. This approach saves time and
 computational resources.
 
 ```python
@@ -440,13 +455,15 @@ simulation_5.run_and_save_to_db()
 
 # The simulation allready exists, so it won't run again.
 
-# Enable monitors again and add xz- and yz-profile monitors, ensuring all others are disabled
+# Enable monitors again and add xz- and yz-profile monitors
 simulation_5.set_monitor_enabled("trans_profile_monitor", True)
 simulation_5.set_monitor_enabled("ref_profile_monitor", True)
 simulation_5.set_monitor_enabled("xz_profile_monitor", True)
 simulation_5.set_monitor_enabled("yz_profile_monitor", True)
 
-# Running the simulation again will update the old database entry with new monitor results
+# Running the simulation again will now diable the transmission and reflection profile monitors
+# along with the reflection and transmission far-field monitors, and will update the old database entry with
+# the xz- and yz-profile monitor result data.
 simulation_5.run_and_save_to_db()
 ```
 
