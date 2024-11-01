@@ -112,8 +112,8 @@ class PlotCanvas(FigureCanvas):
                 "Wavelength (λ) [nm]",
                 "$\\frac{{E_{{max}}}}{{E_0}}$"
             ),
-            (result.lambdas, result.ref_mag_max_pr_lambda, f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}"),
-            (result.lambdas, result.trans_mag_max_pr_lambda, f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
+            (result.lambdas, result.ref_mag_max_pr_lambda[result.ref_mag_max_pr_lambda.keys()[0]], f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}"),
+            (result.lambdas, result.trans_mag_max_pr_lambda[result.trans_mag_max_pr_lambda.keys()[0]], f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
         ],
         "ref_magnitude_max_pr_lambda": lambda result, legend: [
             (
@@ -121,7 +121,7 @@ class PlotCanvas(FigureCanvas):
                 "Wavelength (λ) [nm]",
                 "$\\frac{{E_{{max}}}}{{E_0}}$"
             ),
-            (result.lambdas, result.ref_mag_max_pr_lambda[str(5)], f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
+            (result.lambdas, result.ref_mag_max_pr_lambda[result.ref_mag_max_pr_lambda.keys()[0]], f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
         ],
         "trans_magnitude_max_pr_lambda": lambda result, legend: [
             (
@@ -129,7 +129,7 @@ class PlotCanvas(FigureCanvas):
                 "Wavelength (λ) [nm]",
                 "$\\frac{{E_{{max}}}}{{E_0}}$"
             ),
-            (result.lambdas, result.trans_mag_max_pr_lambda[str(5)], f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
+            (result.lambdas, result.trans_mag_max_pr_lambda[result.trans_mag_max_pr_lambda.keys()[0]], f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
         ],
         "ref_power_and_ref_mag_res_max": lambda result, legend: [
             (
@@ -138,7 +138,7 @@ class PlotCanvas(FigureCanvas):
                 ""
             ),
             (result.lambdas, result.ref_powers, f"Reflectance {legend}"),
-            (result.lambdas, result.ref_mag_max_pr_lambda[str(5)], f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
+            (result.lambdas, result.ref_mag_max_pr_lambda[result.ref_mag_max_pr_lambda.keys()[0]], f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
         ],
         "ref_and_trans_power_and_ref_mag_max": lambda result, legend: [
             (
@@ -148,7 +148,7 @@ class PlotCanvas(FigureCanvas):
             ),
             (result.lambdas, result.ref_powers, f"Reflectance {legend}"),
             (result.lambdas, result.trans_powers, f"Transmittance {legend}"),
-            (result.lambdas, result.ref_mag_max_pr_lambda[str(5)], f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
+            (result.lambdas, result.ref_mag_max_pr_lambda[result.ref_mag_max_pr_lambda.keys()[0]], f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
         ],
         "ref_power_and_trans_mag_res_max": lambda result, legend: [
             (
@@ -157,7 +157,7 @@ class PlotCanvas(FigureCanvas):
                 ""
             ),
             (result.lambdas, result.ref_powers, f"Reflectance {legend}"),
-            (result.lambdas, result.trans_mag_max_pr_lambda[str(5)], f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
+            (result.lambdas, result.trans_mag_max_pr_lambda[result.trans_mag_max_pr_lambda.keys()[0]], f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
         ],
         "ref_and_trans_power_and_trans_mag_max": lambda result, legend: [
             (
@@ -167,7 +167,7 @@ class PlotCanvas(FigureCanvas):
             ),
             (result.lambdas, result.ref_powers, f"Reflectance {legend}"),
             (result.lambdas, result.trans_powers, f"Transmittance {legend}"),
-            (result.lambdas, result.trans_mag_max_pr_lambda[str(5)], f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
+            (result.lambdas, result.trans_mag_max_pr_lambda[result.trans_mag_max_pr_lambda.keys()[0]], f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
         ],
         "trans_power_and_ref_mag_res_max": lambda result, legend: [
             (
@@ -176,7 +176,7 @@ class PlotCanvas(FigureCanvas):
                 ""
             ),
             (result.lambdas, result.trans_powers, f"Transmittance {legend}"),
-            (result.lambdas, result.ref_mag_max_pr_lambda[str(5)], f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
+            (result.lambdas, result.ref_mag_max_pr_lambda[result.ref_mag_max_pr_lambda.keys()[0]], f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
         ],
         "trans_power_and_trans_mag_res_max": lambda result, legend: [
             (
@@ -185,7 +185,7 @@ class PlotCanvas(FigureCanvas):
                 ""
             ),
             (result.lambdas, result.trans_powers, f"Transmittance {legend}"),
-            (result.lambdas, result.trans_mag_max_pr_lambda[str(5)], f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
+            (result.lambdas, result.trans_mag_max_pr_lambda[result.trans_mag_max_pr_lambda.keys()[0]], f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}")
         ],
         "ref_and_trans_power_and_ref_and_trans_mag_max": lambda result, legend: [
             (
@@ -195,8 +195,8 @@ class PlotCanvas(FigureCanvas):
             ),
             (result.lambdas, result.ref_powers, f"Reflectance {legend}"),
             (result.lambdas, result.trans_powers, f"Transmittance {legend}"),
-            (result.lambdas, result.ref_mag_max_pr_lambda[str(5)], f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}"),
-            (result.lambdas, result.trans_mag_max_pr_lambda[str(5)], f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}"),
+            (result.lambdas, result.ref_mag_max_pr_lambda[result.ref_mag_max_pr_lambda.keys()[0]], f"Reflected $\\frac{{E_{{max}} }}{{E_0}}$ {legend}"),
+            (result.lambdas, result.trans_mag_max_pr_lambda[result.trans_mag_max_pr_lambda.keys()[0]], f"Transmitted $\\frac{{E_{{max}} }}{{E_0}}$ {legend}"),
         ],
     }
 
@@ -246,9 +246,9 @@ class PlotCanvas(FigureCanvas):
         if plot_type == "ref_profile":
 
             string = "Reflected"
-            distance = str(5)
-            print(sim_result.ref_profile_vectors.keys())
-            wavelengths = np.array(list(sim_result.ref_profile_vectors[str(5)].keys())).astype(np.float16)
+            distances = sim_result.ref_profile_vectors.keys()
+            distance = distances[0]
+            wavelengths = np.array(list(sim_result.ref_profile_vectors[distance].keys())).astype(np.float16)
 
             if update != "update_lambda":
                 wavelength = sim_result.ref_power_res_lambda
@@ -265,8 +265,9 @@ class PlotCanvas(FigureCanvas):
 
         elif plot_type == "trans_profile":
             string = "Reflected"
-            distance = str(5)
-            wavelengths = np.array(list(sim_result.trans_profile_vectors[str(5)].keys())).astype(np.float16)
+            distances = sim_result.trans_profile_vectors.keys()
+            distance = distances[0]
+            wavelengths = np.array(list(sim_result.trans_profile_vectors[distance].keys())).astype(np.float16)
 
             if update != "update_lambda":
                 wavelength = sim_result.ref_power_res_lambda
@@ -292,8 +293,9 @@ class PlotCanvas(FigureCanvas):
         vector_label='E-field vectors'
 
         if plot_type == "xz_profile":
-            distance = str(5)
-            wavelengths = np.array(list(sim_result.xz_profile_E_vectors[str(5)].keys())).astype(np.float16)
+            distances = sim_result.ref_profile_vectors.keys()
+            distance = distances[0]
+            wavelengths = np.array(list(sim_result.xz_profile_E_vectors[distance].keys())).astype(np.float16)
             if update != "update_lambda":
                 wavelength = sim_result.ref_power_res_lambda
             else:
@@ -751,12 +753,15 @@ class ResultsTable(QTableWidget):
             for column_nr, value in enumerate(included_columns):
                 attribute = getattr(result, value)
                 if value == "comment":
-                    attribute = attribute.split(";:;")
+                    if attribute is not None:
+                        attribute = attribute.split(";:;")
 
-                    if len(attribute) < 2:
-                        attribute = None
-                    else:
-                        attribute = attribute[1]
+                        if len(attribute) < 2:
+                            attribute = None
+                        else:
+                            attribute = attribute[1]
+                if isinstance(attribute, dict):
+                    attribute = attribute[attribute.keys()[0]]
                 self.setItem(row_nr, column_nr, NumericTableWidgetItem(str(attribute)))
 
         # Set alternating row colors
@@ -978,7 +983,7 @@ class DatabaseViewer(QMainWindow):
         for column in inspector.columns:
 
             # Fetch the name of the column
-            column_name = column.name
+            column_name = column._name
             included_collumns = [
                 DatabaseViewer.input_field_to_column_map[field] for field in DatabaseViewer.default_input_fields
             ]
@@ -1109,9 +1114,9 @@ class DatabasePlotter(DatabaseHandler):
         })
 
     @staticmethod
-    def plot_spectrum(ax, lambdas, powers, label, color, linestyle='-', marker=None) -> None:
+    def plot_spectrum(ax, lambdas, powers, label, color, linestyle='-', marker=None, linewidth: int = 2) -> None:
         """Plots a spectrum on the given axis."""
-        ax.plot(lambdas, powers, label=label, color=color, linestyle=linestyle, marker=marker, markersize=4)
+        ax.plot(lambdas, powers, label=label, color=color, linestyle=linestyle, linewidth=linewidth, marker=marker, markersize=4)
 
     @staticmethod
     def save_plot_if_needed(folder_name: str | None, file_name: str | None) -> None:
@@ -1140,7 +1145,9 @@ class DatabasePlotter(DatabaseHandler):
                       file_name: str | None = None,
                       open_plot: bool = True,
                       vlines: List[float] | None = None,
-                      show_title: bool = True) -> None:
+                      show_title: bool = True,
+                      legends: bool = True,
+                      linewidth: int = 2) -> None:
         """
         Plots the spectrum (reflection, transmission, or both) for the specified result IDs.
 
@@ -1158,13 +1165,13 @@ class DatabasePlotter(DatabaseHandler):
             lambdas = result.lambdas
 
             if plot_type == 'reflection':
-                self.plot_spectrum(ax, lambdas, result.ref_powers, f'Periodicity: {result.fdtd_xspan/2} nm', color)
+                self.plot_spectrum(ax, lambdas, result.ref_powers, f'Periodicity: {result.fdtd_xspan/2} nm', color, linewidth=linewidth)
             elif plot_type == 'transmission':
                 self.plot_spectrum(ax, lambdas, result.trans_powers, f'Periodicity: {result.fdtd_xspan/2} nm', color)
             elif plot_type == 'reflection and transmission':
-                self.plot_spectrum(ax, lambdas, result.ref_powers, 'Reflection', color, linestyle='--')
-                self.plot_spectrum(ax, lambdas, result.trans_powers, 'Transmission', color, linestyle=':')
-                self.plot_spectrum(ax, lambdas, result.ref_powers + result.trans_powers, 'Refl. + Trans.', color)
+                self.plot_spectrum(ax, lambdas, result.ref_powers, 'Reflection', color, linestyle='--', linewidth=linewidth)
+                self.plot_spectrum(ax, lambdas, result.trans_powers, 'Transmission', color, linestyle=':', linewidth=linewidth)
+                self.plot_spectrum(ax, lambdas, result.ref_powers + result.trans_powers, 'Refl. + Trans.', color, linewidth=linewidth)
 
         if vlines is not None:
             for x in vlines:
@@ -1183,7 +1190,9 @@ class DatabasePlotter(DatabaseHandler):
             [min(min(result.lambdas) for result in results) - 10, max(max(result.lambdas) for result in results) + 10])
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
-        ax.legend(loc='best', frameon=False)
+
+        if legends:
+            ax.legend(loc='best', frameon=False)
         plt.tight_layout()
 
         self.save_plot_if_needed(folder_name, file_name)
@@ -1225,11 +1234,11 @@ class DatabasePlotter(DatabaseHandler):
             x_pos = result.profile_x
             y_pos = result.profile_y
         elif plot_type == "xz plane":
-            x_pos = result.xz_profile_x_coord
-            y_pos = result.xz_profile_z_coord
+            x_pos = result.xz_profile_x_coord[str(0.0)]
+            y_pos = result.xz_profile_z_coord[str(0.0)]
         elif plot_type == "yz plane":
-            x_pos = result.yz_profile_y_coord
-            y_pos = result.yz_profile_z_coord
+            x_pos = result.yz_profile_y_coord[str(0.0)]
+            y_pos = result.yz_profile_z_coord[str(0.0)]
 
         if plot_type == "reflection":
 
@@ -1394,9 +1403,70 @@ class DatabasePlotter(DatabaseHandler):
                     )
                 ]
 
+
+
             # Fetch the coorect field profile and calculate magnitudes
             profile_vectors = result.xz_profile_P_vectors[str(distance)][str(wavelength)]
             magnitudes = np.linalg.norm(result.xz_profile_E_vectors[str(distance)][str(wavelength)], axis=-1).T.astype(np.float16)
+
+            # Get he vector field
+            V_x = profile_vectors[:, :, 0]
+            V_y = profile_vectors[:, :, 2]
+
+        elif plot_type == "yz plane":
+
+            wavelengths = np.array(  # Fetch the wavelength for which the profile vectors are available
+                list(
+                    result.yz_profile_E_vectors[str(distance)].keys()
+                )
+            ).astype(np.float16)
+
+            if input_wavelength is None:
+                target = result.ref_power_res_lambda
+                if target is None: target = 0
+                wavelength = wavelengths[  # From the list of available wavelength data, fetch the reflection resonance
+                    np.argmin(
+                        np.abs(
+                            wavelengths - target
+                        )
+                    )
+                ]
+            elif isinstance(input_wavelength, str):
+
+                target = None
+
+                if input_wavelength == "ref res":
+                    target = result.ref_power_res_lambda
+                elif input_wavelength == "trans res":
+                    target = result.trans_power_res_lambda
+                elif input_wavelength == "ref mag res":
+                    target = result.ref_mag_res_lambda
+                elif input_wavelength == "trans mag res":
+                    target = result.trans_mag_res_lambda
+
+                if target is None:
+                    target = 0
+
+                wavelength = wavelengths[  # Fetch the wavelength closest to the target wavelength
+                    np.argmin(
+                        np.abs(
+                            wavelengths - target
+                        )
+                    )
+                ]
+            else:
+                wavelength = wavelengths[  # Fetch the wavelength closest to the input wavelength
+                    np.argmin(
+                        np.abs(
+                            wavelengths - input_wavelength
+                        )
+                    )
+                ]
+
+            # Fetch the coorect field profile and calculate magnitudes
+            profile_vectors = result.yz_profile_P_vectors[str(distance)][str(wavelength)]
+            magnitudes = np.linalg.norm(result.yz_profile_E_vectors[str(distance)][str(wavelength)], axis=-1).T.astype(
+                np.float16)
 
             # Get he vector field
             V_x = profile_vectors[:, :, 0]
@@ -1422,7 +1492,6 @@ class DatabasePlotter(DatabaseHandler):
         # Plot the heatmap using pcolormesh
         heatmap = ax.pcolormesh(X, Y, magnitudes, shading='auto', cmap='viridis')
         cbar = fig.colorbar(heatmap, ax=ax, label="Magnitude")
-
 
         # Assuming ax is your axes object
         if vgaps is None:
@@ -1531,4 +1600,6 @@ class DatabasePlotter(DatabaseHandler):
 
         plt.close()
 
+if __name__ == "__main__":
 
+    DatabaseViewer.open_db_viewer("Test Database")

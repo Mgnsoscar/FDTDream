@@ -1,4 +1,4 @@
-PZT
+PZT (Lead zirconate titanate) - Sintef
 lambda(nm),  e_real,      e_imaginary
 371.0362	8.6218169	0.11535051
 372.6211	8.5702752	0.10913394

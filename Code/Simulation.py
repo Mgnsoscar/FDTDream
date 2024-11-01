@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union, TypedDict
 import numpy as np
 from scipy import constants
 from scipy.signal import find_peaks
-
+from fdtd_region import FDTDRegion
 # Local imports
 from Simulation_database import DatabaseHandler
 
@@ -19,12 +19,50 @@ from Simulation_database import DatabaseHandler
 # is changed to a different number. If you get errors related to the import, try to change the location in the
 # code snippet below to the actual location of you lumapi.py file.
 import importlib.util
+
 spec_win = importlib.util.spec_from_file_location(
     name='lumapi',  # Name of the .py file we want to import
     location=r'C:\\Program Files\\Lumerical\\v241\\api\\python\\lumapi.py'  # The directory of the lumapi file
 )
 lumapi = importlib.util.module_from_spec(spec_win)
 spec_win.loader.exec_module(lumapi)
+
+units_literal = Literal["m", "mm", "um", "nm", "pm", "angstrom", "fm"]
+unit_conversion = {
+    "m": 1,
+    "mm": 1e-3,
+    "um": 1e-6,
+    "nm": 1e-9,
+    "angstrom": 1e-10,
+    "pm": 1e-12,
+    "fm": 1e-15
+}
+materials_explorer = Literal[
+        "Au (Gold) - Ciesielski", "PZT (Lead zirconate titanate) - Sintef",
+        "Al2O3 - Palik", "SiO2 (Glass) - Palik", "YST (Yttria-stabilized zirconia)- Sintef",
+        "TiO2 (Titanium Dioxide) - Sintef",
+        "Ta (Tantalum) - CRC", "Ge (Germanium) - Palik", "etch", "InAs - Palik",
+        "Cr (Chromium) - CRC", "Ni (Nickel) - CRC", "TiN - Palik", "In (Indium) - Palik",
+        "Ni (Nickel) - Palik", "Cr (Chromium) - Palik", "Au (Gold) - Palik",
+        "Ge (Germanium) - CRC", "PEC (Perfect Electrical Conductor)", "W (Tungsten) - CRC",
+        "InP - Palik", "Ag (Silver) - Palik(0 - 2um)", "Ag (Silver) - Palik",
+        "Pt (Platinum) - Palik", "Au (Gold) - CRC", "Cu (Copper) - Palik",
+        "W (Tungsten) - Palik", "Ti (Titanium) - CRC", "Cu (Copper) - CRC",
+        "Ag (Silver) - Johnson and Christy", "GaAs - Palik", "Fe (Iron) - Palik",
+        "Ag (Silver) - Palik(1 - 10um)", "Al (Aluminium) - CRC", "Rh (Rhodium) - Palik",
+        "Sn (Tin) - Palik", "Au (Gold) - Johnson and Christy", "Pd (Palladium) - Palik",
+        "V (Vanadium) - CRC", "Ag (Silver) - CRC", "Si (Silicon) - Palik",
+        "Al (Aluminium) - Palik", "Fe (Iron) - CRC", "Ti (Titanium) - Palik",
+        "H2O (Water) - Palik", "PZT on Pt electrode (Lead zirconate titanate on Platinum electrode) - Sintef",
+        "<Object defined dielectric>"
+    ]
+# Convert Literal values to a list of valid options
+valid_materials = list(materials_explorer.__args__)
+
+def _validate_material(material: str) -> None:
+    """Validates if the material is in the defined list of valid materials."""
+    if material not in valid_materials:
+        raise ValueError(f"'{material}' is not a valid material. Choose from {valid_materials}.")
 
 
 class StructureDoesNotExistError(Exception):
@@ -143,6 +181,7 @@ class SimulationData(TypedDict):
     trans_power_monitor_z: np.float16
     trans_profile_monitor_z: np.float16
     frequency_points: np.float16
+    near_field_monitor_distances: str
 
     # Results
     lambdas: np.ndarray
@@ -227,7 +266,9 @@ class SimulationBase(lumapi.FDTD):
 
     # Predefined set of materials for simulations
     materials_explorer = Literal[
-        "Au (Gold) - Ciesielski", "PZT", "Al2O3 - Palik", "SiO2 (Glass) - Palik",
+        "Au (Gold) - Ciesielski", "PZT (Lead zirconate titanate) - Sintef",
+        "Al2O3 - Palik", "SiO2 (Glass) - Palik", "YST (Yttria-stabilized zirconia)- Sintef",
+        "TiO2 (Titanium Dioxide) - Sintef",
         "Ta (Tantalum) - CRC", "Ge (Germanium) - Palik", "etch", "InAs - Palik",
         "Cr (Chromium) - CRC", "Ni (Nickel) - CRC", "TiN - Palik", "In (Indium) - Palik",
         "Ni (Nickel) - Palik", "Cr (Chromium) - Palik", "Au (Gold) - Palik",
@@ -240,7 +281,8 @@ class SimulationBase(lumapi.FDTD):
         "Sn (Tin) - Palik", "Au (Gold) - Johnson and Christy", "Pd (Palladium) - Palik",
         "V (Vanadium) - CRC", "Ag (Silver) - CRC", "Si (Silicon) - Palik",
         "Al (Aluminium) - Palik", "Fe (Iron) - CRC", "Ti (Titanium) - Palik",
-        "H2O (Water) - Palik"
+        "H2O (Water) - Palik", "PZT on Pt electrode (Lead zirconate titanate on Platinum electrode) - Sintef",
+        "<Object defined dielectric>"
     ]
 
     # Predefined monitor literals
@@ -287,11 +329,14 @@ class SimulationBase(lumapi.FDTD):
         ]
     }
 
+    fdtd: FDTDRegion
+
     # Attribute slots for optimized memory usage
     __slots__ = [
         "save_path", "db", "name", "_active_meshes", "_active_structures",
         "_global_mesh_stepsizes", "_db_save_path", "_unit_cells", "_film_thickness", "_comment",
-        "_near_field_distance"
+        "_near_field_distance", "_trans_near_field_z_pos", "_xz_monitor_y_pos", "_yz_monitor_x_pos",
+        "fdtd"
     ]
 
     def __init__(self,
@@ -402,8 +447,13 @@ class SimulationBase(lumapi.FDTD):
         # Set default film thickness to 100 nm
         self._film_thickness = 100
 
-        # Set default distance between near-field monitors and the film/material surface.
-        self._near_field_distance = 10
+        # Set default distance between near-field monitors and the film/material surface, along with the
+        # default base positions (where the monitor should be self._near_field_distance away from.)
+        self._near_field_distance = 10.
+        self._trans_near_field_z_pos = 0.
+        self._ref_near_field_z_pos = 100.
+        self._xz_monitor_y_pos = 0.
+        self._yz_monitor_x_pos = 0.
 
         # If not initialized from base, create and save the base configuration
         if not from_base:
@@ -411,6 +461,9 @@ class SimulationBase(lumapi.FDTD):
             self._init_default_configuration()
             print("\tBase environment created.")
             self.save(os.path.abspath("../Base Enviroment/base.fsp"))
+
+        # Add fdtd region
+        self.fdtd = self.addfdtd()
 
         # Save the simulation in the designated folder
         self.save()
@@ -469,20 +522,11 @@ class SimulationBase(lumapi.FDTD):
             None
         """
 
-        # Define common configuration for x and y span dimensions (350 nm x 350 nm)
-        x_y_plane_span = {
-            "x span": (350 * 1.1) * 1e-9,
-            "y span": (350 * 1.1) * 1e-9
-        }
-
         # === Add Substrate ===
         # Define the substrate with specific index and span, positioned symmetrically along the z-axis
         super().addrect(
-            **x_y_plane_span,
             **{
                 "name": "substrate",
-                "z span": 750e-9,  # Thickness of the substrate
-                "z": -750e-9 / 2,  # Center the substrate along the z-axis
                 "index": 1.45,  # Refractive index of the substrate material
                 "index units": "m",  # Units for refractive index
                 "override mesh order from material database": True,
@@ -495,17 +539,15 @@ class SimulationBase(lumapi.FDTD):
         # The background material is set to "etch".
         self.addfdtd(
             **{
-                "x span": 350e-9,  # The x-span of the simulation region
-                "y span": 350e-9,  # The y-span of the simulation region
-                "z": (self._film_thickness / 2) * 1e-9,  # Position FDTD region centered in film
-                "z span": 3000e-9,  # Span along the z-axis
                 "background material": "etch",  # Background material
                 "allow symmetry on all boundaries": True,  # Enable boundary symmetry where applicable
                 "x min bc": "Anti-Symmetric",  # Anti-symmetric boundary on x-min
                 "x max bc": "Anti-Symmetric",  # Anti-symmetric boundary on x-max
                 "y min bc": "Symmetric",  # Symmetric boundary on y-min
                 "y max bc": "Symmetric",  # Symmetric boundary on y-max
-                "pml profile": 3,  # Set to steep angle
+                "same settings on all boundaries": True,
+                "pml profile": 0,  # Set to standard
+                "pml layers": 20,
                 "auto scale pml parameters": False,  # Disable auto-scaling for PML parameters
                 "snap pec to yee cell boundary": False  # Disable snapping PEC to Yee cell boundary
             }
@@ -519,21 +561,17 @@ class SimulationBase(lumapi.FDTD):
 
         # Add reflection power monitor above the substrate
         self.addpower(
-            **x_y_plane_span,
             **power_monitor_config,
             **{
                 "name": "ref_power_monitor",  # Reflection power monitor
-                "z": 700e-9  # Position 700 nm above the substrate
             }
         )
 
         # Add transmission power monitor below the substrate
         self.addpower(
-            **x_y_plane_span,
             **power_monitor_config,
             **{
                 "name": "trans_power_monitor",  # Transmission power monitor
-                "z": -700e-9  # Position 700 nm below the substrate
             }
         )
 
@@ -546,21 +584,17 @@ class SimulationBase(lumapi.FDTD):
 
         # Add a profile monitor above the substrate for E-field vector measurement in the xy-plane
         self.addpower(
-            **x_y_plane_span,
             **profile_monitor_config,
             **{
                 "name": "ref_profile_monitor",
-                "z": (self._film_thickness + 10) * 1e-9  # Position 10 nm above the film
             }
         )
 
         # Add a profile monitor below the substrate for E-field vector measurement in the xy-plane
         self.addpower(
-            **x_y_plane_span,
             **profile_monitor_config,
             **{
                 "name": "trans_profile_monitor",
-                "z": -10e-9  # Position 10 nm below the substrate
             }
         )
 
@@ -574,9 +608,6 @@ class SimulationBase(lumapi.FDTD):
             **{
                 "name": "xz_profile_monitor",
                 "monitor type": "2D Y-normal",  # Monitor perpendicular to the y-axis
-                "x span": 350e-9,  # Span along the x-axis
-                "z span": 120e-9,  # Span along the z-axis
-                "z": (self._film_thickness * 1e-9) / 2  # Position in the middle of the film
             }
         )
         self.set("enabled", False)  # Initially disabled
@@ -587,9 +618,6 @@ class SimulationBase(lumapi.FDTD):
             **{
                 "name": "yz_profile_monitor",
                 "monitor type": "2D X-normal",  # Monitor perpendicular to the x-axis
-                "y span": 350e-9,  # Span along the y-axis
-                "z span": 120e-9,  # Span along the z-axis
-                "z": (self._film_thickness * 1e-9) / 2  # Position in the middle of the film
             }
         )
         self.set("enabled", False)  # Initially disabled
@@ -597,10 +625,8 @@ class SimulationBase(lumapi.FDTD):
         # === Add Plane Wave Source ===
         # Define the plane wave source for injecting along the z-axis with a backward direction.
         self.addplane(
-            **x_y_plane_span,
             **{
                 "name": "source",  # Name of the source
-                "z": 800e-9 - 200e-9,  # Position the source above the simulation region
                 "direction": "Backward",  # Injection direction is backward along the z-axis
                 "injection axis": "z-axis",  # Inject along the z-axis
                 "polarization definition": "P",  # Set polarization as x-polarized (P-polarization)
@@ -616,6 +642,9 @@ class SimulationBase(lumapi.FDTD):
             wavelength_stop=1500,  # Stop wavelength: 1500 nm
             frequency_points=1000  # Number of frequency points
         )
+
+        # Set the default xy-plane spans of the FDTD-region
+        self.set_FDTD_spans((500, 500, None))
 
     def _get_results(self, to_db: bool = False, prev_profile_results: dict = None) -> dict:
         """
@@ -744,23 +773,33 @@ class SimulationBase(lumapi.FDTD):
                     )
 
                 # Combine all resonance peak wavelengths and ensure uniqueness
-                combined_resonance_lambdas = np.unique(np.concatenate((
-                    mag_res_lambdas, far_field_peak_lambdas
-                )))
+                combined_resonance_lambdas = np.unique(
+                    np.concatenate([
+                        arr for arr in (mag_res_lambdas, far_field_peak_lambdas)
+                        if arr is not None and arr.size > 0
+                    ])
+                )
 
                 # Optionally filter for database storage
                 if to_db:
-
                     # Convert into dictionaries with the near-field monitor distance as the keys
                     profile_vectors = {
                         str(self._near_field_distance): {
-                            str(wavelength): profile_vectors[:, :, np.argmin(abs(lambdas-wavelength))]
+                            str(wavelength): profile_vectors[:, :, np.argmin(abs(lambdas - wavelength))]
                             for wavelength in combined_resonance_lambdas
                         }
                     }
 
                     mag_max_pr_lambda = {
                         str(self._near_field_distance): mag_max_pr_lambda
+                    }
+
+                    mag_res = {
+                        str(self._near_field_distance): mag_res
+                    }
+
+                    mag_res_lambda = {
+                        str(self._near_field_distance): mag_res_lambda
                     }
 
                 return profile_vectors, mag_max_pr_lambda, mag_res_lambda, mag_res
@@ -797,28 +836,52 @@ class SimulationBase(lumapi.FDTD):
                 if profile_type == "xz":
                     E_vectors = np.real(E_results["E"][:, 0, :, :]).astype(np.float16)
                     P_vectors = np.real(P_results["P"][:, 0, :, :]).astype(np.float16)
+                    perpendicular_position = str(self._xz_monitor_y_pos)
                 elif profile_type == "yz":
                     E_vectors = np.real(E_results["E"][0, :, :, :]).astype(np.float16)
                     P_vectors = np.real(P_results["P"][0, :, :, :]).astype(np.float16)
+                    perpendicular_position = str(self._yz_monitor_x_pos)
 
                 # Handle previous results if provided
                 if prev_profile_results is not None:
+
                     results["ref_mag_max_pr_lambda"] = prev_profile_results.get("ref_mag_max_pr_lambda", None)
                     results["trans_mag_max_pr_lambda"] = prev_profile_results.get("trans_mag_max_pr_lambda", None)
                     results["ref_powers"] = prev_profile_results.get("ref_powers", None)
                     results["trans_powers"] = prev_profile_results.get("trans_powers", None)
 
+                    # Fetch the distances of the profile monitors in case of previous results
+                    ref_near_field_distances = sorted_keys = list(
+                        sorted(results["ref_mag_max_pr_lambda"].keys(), key=float)
+                    )
+                    trans_near_field_distances = list(
+                        sorted(results["trans_mag_max_pr_lambda"].keys(), key=float)
+                    )
+
+                    if (
+                            self._near_field_distance not in ref_near_field_distances or
+                            self._near_field_distance not in trans_near_field_distances
+                    ):
+                        distance = str(min([float(ref_near_field_distances[0]), float(trans_near_field_distances[0])]))
+                        print(results["trans_mag_max_pr_lambda"].keys())
+                    else:
+                        distance = str(self._near_field_distance)
+                        print("else")
+
+                else:
+                    distance = str(self._near_field_distance)
+
                 # Fetch resonances for both transmission and reflection
                 trans_mag_res_lambdas, _ = self._get_resonance(
                     lambdas,
-                    results["trans_mag_max_pr_lambda"][str(self._near_field_distance)],
+                    results["trans_mag_max_pr_lambda"][str(distance)],
                     resonance_type="reflection",
                     nr_peaks=3
                 )
 
                 ref_mag_res_lambdas, _ = self._get_resonance(
                     lambdas,
-                    results["ref_mag_max_pr_lambda"][str(self._near_field_distance)],
+                    results["ref_mag_max_pr_lambda"][str(distance)],
                     resonance_type="reflection",
                     nr_peaks=3
                 )
@@ -835,28 +898,62 @@ class SimulationBase(lumapi.FDTD):
 
                 # Combine all resonance peak wavelengths and ensure uniqueness
                 combined_resonance_lambdas = np.unique(
-                    np.concatenate((trans_mag_res_lambdas, ref_mag_res_lambdas, ref_peak_lambdas, trans_peak_lambdas)))
+                    np.concatenate([arr for arr in
+                                    (trans_mag_res_lambdas, ref_mag_res_lambdas, ref_peak_lambdas, trans_peak_lambdas)
+                                    if arr is not None and arr.size > 0])
+                )
 
                 # Optionally filter for database storage
                 if to_db:
 
                     # Create dictionaries with the near-field monitor distance as the keys
                     E_vectors = {
-                        str(self._near_field_distance): {
+                        perpendicular_position: {
                             str(wavelength): E_vectors[:, :, np.argmin(np.abs(lambdas - wavelength))]
                             for wavelength in combined_resonance_lambdas
                         }
                     }
 
                     P_vectors = {
-                        str(self._near_field_distance): {
+                        perpendicular_position: {
                             str(wavelength): P_vectors[:, :, np.argmin(np.abs(lambdas - wavelength))]
                             for wavelength in combined_resonance_lambdas
                         }
                     }
 
-                return E_vectors, P_vectors, (E_results["x"] * 1e9).astype(np.float16).flatten(), (
-                        E_results["z"] * 1e9).astype(np.float16).flatten()
+                    x_coordinates = {
+                        str(perpendicular_position): (E_results["x"] * 1e9).astype(np.float16).flatten()
+                    }
+
+                    z_coordinates = {
+                        str(perpendicular_position): (E_results["z"] * 1e9).astype(np.float16).flatten()
+                    }
+
+                else:
+                    # Create dictionaries with the near-field monitor distance as the keys
+                    E_vectors = {
+                        perpendicular_position: {
+                            str(wavelength): E_vectors[:, :, np.argmin(np.abs(lambdas - wavelength))]
+                            for wavelength in lambdas
+                        }
+                    }
+
+                    P_vectors = {
+                        perpendicular_position: {
+                            str(wavelength): P_vectors[:, :, np.argmin(np.abs(lambdas - wavelength))]
+                            for wavelength in lambdas
+                        }
+                    }
+
+                    x_coordinates = {
+                        str(perpendicular_position): (E_results["x"] * 1e9).astype(np.float16).flatten()
+                    }
+
+                    z_coordinates = {
+                        str(perpendicular_position): (E_results["z"] * 1e9).astype(np.float16).flatten()
+                    }
+
+                return E_vectors, P_vectors, x_coordinates, z_coordinates
 
             return None, None, None, None
 
@@ -886,6 +983,15 @@ class SimulationBase(lumapi.FDTD):
         spans = [self.get_structure_spans(i) for i in range(1, 4)]
         materials = [self._get_structure_material(i) for i in range(1, 4)]
 
+        # Fetch active monitors
+        active_monitors = self._get_active_monitors()
+        active_monitors_list = active_monitors.split(",")
+
+        filtered_edge_meshes = {}
+        for name, value in self._edge_meshes.items():
+            if name.split("_")[1] in ["1", "2", "3"]:
+                filtered_edge_meshes[name] = value
+
         # Get FDTD spans and the global wavelength range
         fdtd_spans = self.get_FDTD_spans()
         lambda_start, lambda_stop, frequency_points = self._get_global_wavelength_range()
@@ -908,8 +1014,17 @@ class SimulationBase(lumapi.FDTD):
             lambda_stop=lambda_stop,
             frequency_points=frequency_points,
             simulation_hash=self.__hash__(),
-            active_monitors=self._get_active_monitors(),
-            **self._edge_meshes,
+            active_monitors=active_monitors,
+            monitor_distances=(
+                f"{self._near_field_distance if 'ref_profile_monitor' in active_monitors_list else ''}"
+                f".:."
+                f"{self._near_field_distance if 'trans_profile_monitor' in active_monitors_list else ''}"
+                f".:."
+                f"{self._xz_monitor_y_pos if 'xz_profile_monitor' in active_monitors_list else ''}"
+                f".:."
+                f"{self._yz_monitor_x_pos if 'yz_profile_monitor' in active_monitors_list else ''}"
+            ),
+            **filtered_edge_meshes,
             incidence_angle=self._get_incidence_angle(),
             boundary_symmetries=self._get_boundary_symmetry_conditions(),
             comment=self._comment
@@ -1211,7 +1326,7 @@ class SimulationBase(lumapi.FDTD):
         return self._film_thickness
 
     def _create_edge_meshes(
-            self, mesh_size: int, structure_type_id: int | str, step_size: float, struct_nr: int
+            self, mesh_size: int, structure_type_id: int | str, step_size: float, struct_nr: int,
     ) -> None:
         """
         Creates edge mesh cubes at the corners of the given structure and adds them to the simulation group.
@@ -1448,6 +1563,7 @@ class SimulationBase(lumapi.FDTD):
 
         # Gather all relevant attributes to form the unique hash
         attributes = (
+            self.name,
             *self.get_structure_spans(1),  # Structure spans for structure 1
             self._get_structure_material(1),  # Material for structure 1
             *self.get_structure_spans(2),  # Structure spans for structure 2
@@ -1461,7 +1577,7 @@ class SimulationBase(lumapi.FDTD):
             *unit_cells,  # Unit cells
             *edge_meshes,  # Edge meshes
             self._get_boundary_symmetry_conditions(),  # Symmetry conditions on all boundaries
-            self._get_incidence_angle()  # Source angle of incidence
+            self._get_incidence_angle(),  # Source angle of incidence
         )
 
         # Create a string representation of all attributes and encode it to bytes
@@ -1484,6 +1600,9 @@ class SimulationBase(lumapi.FDTD):
         """
         # Compare the hash of the current instance with the provided hash
         return self.__hash__() == other_hash
+
+    def addfdtd(self, *args, **kwargs):
+        return FDTDRegion(self)
 
     def get_structure_spans(self, structure_type_id: str | int) \
             -> tuple[np.float16 | None, np.float16 | None, np.float16 | None]:
@@ -1681,7 +1800,7 @@ class SimulationBase(lumapi.FDTD):
         # Check if a custom save path is provided
         if save_path is None:
             # Save the simulation file to the default save path
-            super().save(self.save_path)
+            super().save(os.path.abspath(self.save_path))
         else:
             # Save the simulation file to the specified path
             super().save(save_path)
@@ -1739,7 +1858,7 @@ class SimulationBase(lumapi.FDTD):
         fdtd_xspan, fdtd_yspan, fdtd_zspan = self.get_FDTD_spans()
 
         # Update the FDTD spans to account for the new wavelength range and film thickness
-        self.set_FDTD_spans((fdtd_xspan, fdtd_yspan, wavelength_stop * 2  + self._get_film_thickness()))
+        self.set_FDTD_spans((fdtd_xspan, fdtd_yspan, wavelength_stop + self._get_film_thickness()))
 
     def define_film_thickness(self, thickness: int) -> None:
         """
@@ -1756,13 +1875,39 @@ class SimulationBase(lumapi.FDTD):
             None
         """
         # Update the film thickness
-        self._film_thickness = thickness
+        self._film_thickness = float(thickness)
 
         # Get the maximum wavelength from the global wavelength range
         max_wavelength = self._get_global_wavelength_range()[1]
 
         # Update the FDTD spans to account for the new wavelength range and film thickness
-        self.set_FDTD_spans((None, None, max_wavelength * 2 + thickness))
+        self.set_FDTD_spans((None, None, max_wavelength + thickness))
+
+    def define_transmission_near_field_structure(self, structure_id: int | str | None) -> None:
+        """Defines what structure the transmission near field monitor should lie below. If None is passed
+        it will be right below the substrate."""
+        # Fetch the minimum z-coordinate of the structure in question
+        _, _, z_minmax = self.get_structure_min_max(structure_id)
+        z_min, _ = z_minmax
+
+        # Update the global variable
+        self._trans_near_field_z_pos = z_min
+
+        # Use the setFDTDspan method to reposition the monitor
+        self.set_FDTD_spans((None, None, None))
+
+    def define_reflection_near_field_structure(self, structure_id: int | str | None) -> None:
+        """Defines what structure the reflection near field monitor should lie above. If None is passed
+        it will be above the tallest structure."""
+        # Fetch the minimum z-coordinate of the structure in question
+        _, _, z_minmax = self.get_structure_min_max(structure_id)
+        _, z_max = z_minmax
+
+        # Update the global variable
+        self._ref_near_field_z_pos = z_max
+
+        # Use the set_FDTD_spans() method to reposition the monitor
+        self.set_FDTD_spans((None, None, None))
 
     def set_near_field_distance(self, distance: int | float | np.float16) -> None:
         """
@@ -1785,10 +1930,62 @@ class SimulationBase(lumapi.FDTD):
         """
 
         # Update the internal near-field distance variable
-        self._near_field_distance = distance
+        self._near_field_distance = float(distance)
 
         # Adjust FDTD spans to reposition the monitors
         self.set_FDTD_spans((None, None, None))
+
+    def set_xz_monitor_y_pos(self, y_pos: float) -> None:
+        """
+        Set the position of the xz-plane profile monitor along the y-axis.
+
+        This method sets the y-position of the xz-plane profile monitor, ensuring that
+        it is placed within the bounds of the FDTD region. If the provided `y_pos` is outside
+        the FDTD region, an AttributeError is raised.
+
+        Args:
+            y_pos (float): The y-position of the xz-plane monitor.
+
+        Raises:
+            AttributeError: If `y_pos` is outside the bounds of the FDTD region.
+        """
+        # Get the minimum and maximum y-values of the FDTD region
+        _, y_min_max, _ = self.get_FDTD_min_max()
+        y_min, y_max = y_min_max
+
+        # Ensure the monitor is within the FDTD region's bounds
+        if y_min > y_pos > y_max:
+            raise AttributeError("You cannot place the xz-plane profile monitor outside the FDTD-region.")
+
+        # Set the y-position for the xz-plane monitor and update FDTD spans
+        self._xz_monitor_y_pos = float(y_pos)
+        self.set_FDTD_spans((None, None, None))  # Update the FDTD region
+
+    def set_yz_monitor_x_pos(self, x_pos: float) -> None:
+        """
+        Set the position of the yz-plane profile monitor along the x-axis.
+
+        This method sets the x-position of the yz-plane profile monitor, ensuring that
+        it is placed within the bounds of the FDTD region. If the provided `x_pos` is outside
+        the FDTD region, an AttributeError is raised.
+
+        Args:
+            x_pos (float): The x-position of the yz-plane monitor.
+
+        Raises:
+            AttributeError: If `x_pos` is outside the bounds of the FDTD region.
+        """
+        # Get the minimum and maximum x-values of the FDTD region
+        _, x_min_max, _ = self.get_FDTD_min_max()
+        x_min, x_max = x_min_max
+
+        # Ensure the monitor is within the FDTD region's bounds
+        if x_min > x_pos > x_max:
+            raise AttributeError("You cannot place the yz-plane profile monitor outside the FDTD-region.")
+
+        # Set the x-position for the yz-plane monitor and update FDTD spans
+        self._yz_monitor_x_pos = float(x_pos)
+        self.set_FDTD_spans((None, None, None))  # Update the FDTD region
 
     def run_and_save_to_db(self) -> None:
         """
@@ -1816,7 +2013,15 @@ class SimulationBase(lumapi.FDTD):
         """
 
         # Check if the simulation exists and retrieve previous active monitors
-        simulation_exists, prev_active_monitors, simulation = self.db.simulation_exists(self.__hash__())
+        simulation_exists, prev_active_monitors, simulation, monitor_distances \
+            = self.db.simulation_exists(self.__hash__())
+
+        if monitor_distances:
+            prev_ref_distances = monitor_distances[0].split(",")
+            prev_trans_distances = monitor_distances[1].split(",")
+            prev_xz_distances = monitor_distances[2].split(",")
+            prev_yz_distances = monitor_distances[3].split(",")
+
         prev_active_monitors = set(prev_active_monitors or [])
 
         # Get current active monitors and identify new ones
@@ -1846,6 +2051,60 @@ class SimulationBase(lumapi.FDTD):
                 current_active_monitors.update({"ref_profile_monitor", "trans_profile_monitor"})
                 new_monitors.update({"ref_profile_monitor", "trans_profile_monitor"})
 
+        # Check if 'ref_profile_monitor' and 'trans_profile_monitor' were previously active and are active now
+        ref_active_before = {"ref_profile_monitor"} & prev_active_monitors
+        ref_active_now = {"ref_profile_monitor"} & current_active_monitors
+        trans_active_before = {"trans_profile_monitor"} & prev_active_monitors
+        trans_active_now = {"trans_profile_monitor"} & current_active_monitors
+        xz_active_before = {"xz_profile_monitor"} & prev_active_monitors
+        xz_active_now = {"xz_profile_monitor"} & current_active_monitors
+        yz_active_before = {"yz_profile_monitor"} & prev_active_monitors
+        yz_active_now = {"yz_profile_monitor"} & current_active_monitors
+
+        # Check if the near-field distance has changed
+        if ref_active_before and ref_active_now and str(self._near_field_distance) not in prev_ref_distances:
+            # Keep the profile monitors enabled if they were active before and the near-field distance is different
+            print(
+                "Near field distance has changed for the reflection profile monitor. "
+                "Keeping 'ref_profile_monitor' enabled."
+            )
+            current_active_monitors.update({"ref_profile_monitor"})
+            new_monitors.update({"ref_profile_monitor"})
+            prev_ref_distances.append(str(self._near_field_distance))
+
+        # Check if the near-field distance has changed
+        if trans_active_before and trans_active_now and str(self._near_field_distance) not in prev_trans_distances:
+            # Keep the profile monitors enabled if they were active before and the near-field distance is different
+            print(
+                "Near field distance has changed for the reflection profile monitor. "
+                "Keeping 'trans_profile_monitor' enabled."
+            )
+            current_active_monitors.update({"trans_profile_monitor"})
+            new_monitors.update({"trans_profile_monitor"})
+            prev_trans_distances.append(str(self._near_field_distance))
+
+        # Check if the near-field distance has changed
+        if xz_active_before and xz_active_now and str(self._xz_monitor_y_pos) not in prev_xz_distances:
+            # Keep the profile monitors enabled if they were active before and the y-position is different
+            print(
+                "y-position has changed for the xz-plane profile monitor. "
+                "Keeping 'xz_profile_monitor' enabled."
+            )
+            current_active_monitors.update({"xz_profile_monitor"})
+            new_monitors.update({"xz_profile_monitor"})
+            prev_xz_distances.append(str(self._xz_monitor_y_pos))
+
+        # Check if the near-field distance has changed
+        if yz_active_before and yz_active_now and str(self._yz_monitor_x_pos) not in prev_yz_distances:
+            # Keep the profile monitors enabled if they were active before and the x-position is different
+            print(
+                "x-position has changed for the yz-plane profile monitor. "
+                "Keeping 'yz_profile_monitor' enabled."
+            )
+            current_active_monitors.update({"yz_profile_monitor"})
+            new_monitors.update({"yz_profile_monitor"})
+            prev_yz_distances.append(str(self._yz_monitor_x_pos))
+
         # Skip running if the simulation exists but no new monitors are found
         if simulation_exists and not new_monitors:
             print("\nSimulation already exists and will not be simulated.")
@@ -1866,6 +2125,8 @@ class SimulationBase(lumapi.FDTD):
                 result = self.run(
                     to_db=True,
                     prev_profile_results={
+                        "ref_powers": simulation.ref_powers,
+                        "trans_powers": simulation.trans_powers,
                         "ref_mag_max_pr_lambda": simulation.ref_mag_max_pr_lambda,
                         "trans_mag_max_pr_lambda": simulation.trans_mag_max_pr_lambda,
                     }
@@ -1873,14 +2134,47 @@ class SimulationBase(lumapi.FDTD):
 
                 # Update existing simulation results in the database if applicable
                 if simulation_exists:
+
+                    # Update the string containing near field monitor distances
+                    new_string = (
+                        f"{','.join(prev_ref_distances)}"
+                        f".:."
+                        f"{','.join(prev_trans_distances)}"
+                        f".:."
+                        f"{','.join(prev_xz_distances)}"
+                        f".:."
+                        f"{','.join(prev_yz_distances)}"
+                    )
+                    setattr(simulation, "monitor_distances", new_string)
+
                     prev_active_monitors_str = getattr(simulation, "active_monitors")
                     for monitor, parameters in SimulationBase.monitor_results.items():
                         if monitor in new_monitors:
-                            for parameter in parameters:
-                                setattr(simulation, parameter, result[parameter])
-                                prev_active_monitors_str += f",{monitor}"
+
+                            # If it's an old monitor but with different distance:
+                            if (
+                                    monitor in ["ref_profile_monitor", "trans_profile_monitor"] and
+                                    ref_active_before and
+                                    ref_active_now
+                            ):
+                                for parameter in parameters:
+                                    if parameter == "profile_x" or parameter == "profile_y":
+                                        setattr(simulation, parameter, result[parameter])
+                                    else:
+                                        old_parameter = getattr(simulation, parameter)
+                                        new_parameter = {
+                                            **old_parameter,
+                                            **result[parameter]
+                                        }
+                                        setattr(simulation, parameter, new_parameter)
+                            else:
+                                for parameter in parameters:
+                                    setattr(simulation, parameter, result[parameter])
+                                    prev_active_monitors_str += f",{monitor}"
+
                     setattr(simulation, "active_monitors", prev_active_monitors_str)
                     self.db.sessions["simulation_exists"].commit()
+                    print(f"New monitor results succesfully added to database entry with id '{simulation.id}'")
                     self.switchtolayout()
                     self.save(
                         os.path.abspath(
@@ -2047,22 +2341,55 @@ class SimulationBase(lumapi.FDTD):
                     float(spans[2]) * 1e-9  # Convert to meters
                 )
 
-    def set_structure_material(self, structure_type_id: str | int, material: materials_explorer) -> None:
+    def set_structure_material(self, structure_type_id: Literal["substrate"] | str | int, material: materials_explorer,
+                               refractive_index: float = None) -> None:
         """
-        Sets the material of all instances of the structure with the specified structure type id.
+        Sets the material of all instances of the structure with the specified structure type id or the substrate.
+        Optionally, a constant refractive index can be assigned if the material is '<Object defined dielectric>'.
 
         Args:
-            structure_type_id (int): The identifier for the structure type whose structures' material is to be set.
-            material (materials_explorer): The material to be assigned to the structure, specified by the materials_explorer.
+            structure_type_id (Literal["substrate"] | str | int): The identifier for the structure type whose material is to be set,
+                or "substrate" to set the material for the substrate.
+            material (materials_explorer): The material to be assigned to the structure or substrate, as defined in materials_explorer.
+            refractive_index (float, optional): The refractive index to be set if the material is '<Object defined dielectric>'.
+                Must be provided when using '<Object defined dielectric>'.
 
         Raises:
-            StructureDoesNotExistError: If the specified structure does not exist in the simulation.
+            StructureDoesNotExistError: If the specified structure does not exist in the simulation (not applicable for substrate).
+            AttributeError: If a refractive index is passed for a material other than '<Object defined dielectric>', or if
+                '<Object defined dielectric>' is used without specifying a refractive index.
 
         Returns:
-            None: This function does not return any value; it modifies the material of the specified structure within the simulation.
+            None: This function does not return any value; it modifies the material of the specified structure or substrate within the simulation.
         """
-        # Check if the specified structure exists in the simulation
-        self._possibly_raise_structure_doesnt_exist_error(structure_type_id)
+        # Check if the specified structure exists in the simulation. Exception if the structure is the substrate.
+        if structure_type_id != "substrate":
+            self._possibly_raise_structure_doesnt_exist_error(structure_type_id)
+
+        # Check that if the material is '<Object defined dielectric>' a refractive index must be passed
+        if material == "<Object defined dielectric>" and refractive_index is None:
+            raise AttributeError("If the material is '<Object defined dielectric>' a refractive index must be given.")
+        elif refractive_index is not None and material != "<Object defined dielectric>":
+            raise AttributeError(
+                "Passing a refractive index to a material that is not '<Object defined dielectric' "
+                "will not set the material refractive index to the passed value. Since this is maybe what you want I "
+                "raise this error, so you don't run faulty simulations."
+            )
+        elif (
+                not isinstance(refractive_index, float) and
+                not isinstance(refractive_index, int) and
+                refractive_index is not None
+        ):
+            raise AttributeError(f"The given refractive index must be float or int, not '{type(refractive_index)}'.")
+
+        # Check if the structure is the substrate.
+        if structure_type_id == "substrate":
+            self.setnamed("substrate", "material", material)
+            if refractive_index is not None:
+                self.setnamed("substrate", "index", refractive_index)
+                self.setnamed("substrate", "index units", "m")
+
+            return
 
         # Retrieve the number of instances for the specified structure type
         num_instances = self._active_structures[f"structure_{structure_type_id}"]["nr"]
@@ -2082,6 +2409,10 @@ class SimulationBase(lumapi.FDTD):
                 "material",
                 material  # Assign the new material to the structure
             )
+
+            if refractive_index is not None:
+                self.setnamed(structure_name, "index", refractive_index)
+                self.setnamed("substrate", "index units", "m")
 
     def set_structure_position(self, structure_type_id: str | int, position: Tuple[Any, Any, Any]) -> None:
         """
@@ -2160,6 +2491,7 @@ class SimulationBase(lumapi.FDTD):
             spans: Tuple[int | float | np.float16, int | float | np.float16, int | float | np.float16] | None,
             position: Tuple[int | float | np.float16, int | float | np.float16, int | float | np.float16] | None,
             material: materials_explorer,
+            refractive_index: float = None,
             edge_mesh_stepsize: int | float | None = None,
             edge_mesh_size: int | float = None,
             bulk_mesh_enabled: bool = True) -> None:
@@ -2190,6 +2522,23 @@ class SimulationBase(lumapi.FDTD):
             - The position and spans will be set based on the provided tuples. If either is None, the corresponding attribute will not be set.
             - If multiple structures of the same type already exist, this function will add the new rectangle to the existing group without duplication.
         """
+
+        # Check that if the material is '<Object defined dielectric>' a refractive index must be passed
+        if material == "<Object defined dielectric>" and refractive_index is None:
+            raise AttributeError("If the material is '<Object defined dielectric>' a refractive index must be given.")
+        elif refractive_index is not None and material != "<Object defined dielectric>":
+            raise AttributeError(
+                "Passing a refractive index to a material that is not '<Object defined dielectric' "
+                "will not set the material refractive index to the passed value. Since this is maybe what you want I "
+                "raise this error, so you don't run faulty simulations."
+            )
+        elif (
+                not isinstance(refractive_index, float) and
+                not isinstance(refractive_index, int) and
+                refractive_index is not None
+        ):
+            raise AttributeError(f"The given refractive index must be float or int, not '{type(refractive_index)}'.")
+
         # Add the structure to the simulation
         self._add_structure(structure_type_id, hole_in=hole_in)
 
@@ -2224,6 +2573,11 @@ class SimulationBase(lumapi.FDTD):
             z_span=float(z_span) * 1e-9,
             material=material
         )
+
+        # Set the refractive index if material is <Object defined dielectric>"
+        if refractive_index is not None:
+            self.setnamed(rect_name, "index", refractive_index)
+            self.setnamed(rect_name, "index units", "m")
 
         # Update the shape parameter for the newly added structure
         self._active_structures[f"structure_{structure_type_id}"]["shape"] = "rect"
@@ -2808,13 +3162,13 @@ class SimulationBase(lumapi.FDTD):
         self.setnamed("FDTD", "x span", float(FDTD_xspan) * 1e-9)
         self.setnamed("FDTD", "y span", float(FDTD_yspan) * 1e-9)
         self.setnamed("FDTD", "z span", float(fdtd_zspan) * 1e-9)
-        self.setnamed("FDTD", "z", float(self._film_thickness/2) * 1e-9)  # Center the FDTD in the middle of the film
+        self.setnamed("FDTD", "z", float(self._film_thickness / 2) * 1e-9)  # Center the FDTD in the middle of the film
 
         # Fetch the min. and max. z-coordinated of the FDTD-region
         _, _, FDTD_z_min_max = self.get_FDTD_min_max()
         FDTD_z_min, FDTD_z_max = FDTD_z_min_max
 
-        # Set the new spans of all the simulation objects to be 1.1 times the FDTD span. This is to avoid
+        # Set the new spans of all the simulation objects to be 2 times the FDTD span. This is to avoid
         # edge mesh issues when using Bloch boundary conditions
         FDTD_xspan *= 2
         FDTD_yspan *= 2
@@ -2823,7 +3177,7 @@ class SimulationBase(lumapi.FDTD):
         self.setnamed("substrate", "x span", float(FDTD_xspan) * 1e-9)
         self.setnamed("substrate", "y span", float(FDTD_yspan) * 1e-9)
         self.setnamed("substrate", "z max", 0)  # Set the maximum z of the substrate to 0
-        self.setnamed("substrate", "z min", float(FDTD_z_min * 2) * 1e-9)  # Update the minimum z of the substrate
+        self.setnamed("substrate", "z min", float(FDTD_z_min * 10) * 1e-9)  # Update the minimum z of the substrate
 
         # Position the source within the FDTD region
         self.setnamed("source", "z", float((FDTD_z_max - 200)) * 1e-9)
@@ -2848,7 +3202,9 @@ class SimulationBase(lumapi.FDTD):
         # Update the dimensions of the transmission profile monitor
         self.setnamed("trans_profile_monitor", "x span", float(FDTD_xspan) * 1e-9)
         self.setnamed("trans_profile_monitor", "y span", float(FDTD_yspan) * 1e-9)
-        self.setnamed("trans_profile_monitor", "z", float(-self._near_field_distance) * 1e-9)
+        self.setnamed(
+            "trans_profile_monitor", "z", float(self._trans_near_field_z_pos - self._near_field_distance) * 1e-9
+        )
 
         # Update the dimensions of the xz and yz profile monitors
         self.setnamed("xz_profile_monitor", "x span", float(FDTD_xspan) * 1e-9)
@@ -2856,11 +3212,17 @@ class SimulationBase(lumapi.FDTD):
             "xz_profile_monitor", "z span", float(self._film_thickness + self._near_field_distance * 2) * 1e-9
         )
         self.setnamed("xz_profile_monitor", "z", (float(self._film_thickness) / 2) * 1e-9)
+        self.setnamed("xz_profile_monitor", "y", float(self._xz_monitor_y_pos) * 1e-9)
+
         self.setnamed("yz_profile_monitor", "y span", float(FDTD_yspan) * 1e-9)
         self.setnamed(
             "yz_profile_monitor", "z span", float(self._film_thickness + self._near_field_distance * 2) * 1e-9
         )
-        self.setnamed("yz_profile_monitor", "z", (float(self._film_thickness)/2) * 1e-9)
+        self.setnamed(
+            "yz_profile_monitor", "x", float(self._yz_monitor_x_pos) * 1e-9
+        )
+
+        self.setnamed("yz_profile_monitor", "z", (float(self._film_thickness) / 2) * 1e-9)
 
         # Move the reflection power monitor above the source
         self.setnamed("ref_power_monitor", "z", float(FDTD_z_max - 150) * 1e-9)
@@ -2880,3 +3242,4 @@ class SimulationBase(lumapi.FDTD):
         """
         # Set the "enabled" property of the specified monitor
         self.setnamed(monitor_name, "enabled", enabled)
+

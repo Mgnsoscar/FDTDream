@@ -140,8 +140,10 @@ class NumpyArrayDictType(TypeDecorator):
             if isinstance(array, np.ndarray):
                 # Convert to np.float16 if it's not already
                 flattened_dict[key] = np.float16(array)
+            elif isinstance(array, np.float16):
+                flattened_dict[key] = array
             else:
-                raise ValueError(f"Value for key {key} is not a NumPy array.")
+                raise ValueError(f"Value for key {key} is not a NumPy array/number.")
 
         # Save the dictionary to the binary stream
         np.savez(out, **flattened_dict)
@@ -174,6 +176,7 @@ class NumpyArrayDictType(TypeDecorator):
         # Unflatten the dictionary to its original nested structure
         result = self._unflatten_dict(flattened_dict)
         return result
+
 class NumpyArrayType(TypeDecorator):
     """
     SQLAlchemy custom type to store NumPy arrays as BLOBs in the database.
@@ -239,68 +242,6 @@ class NumpyArrayType(TypeDecorator):
         out = io.BytesIO(value)
         out.seek(0)  # Rewind the buffer to the beginning
         return np.load(out)
-
-class NumpyCompressedArrayType(TypeDecorator):
-    """
-    SQLAlchemy custom type to store compressed NumPy arrays as BLOBs in the database.
-
-    This class serializes NumPy arrays into compressed binary large objects (BLOBs)
-    using `np.savez_compressed` before storing them in the database. When retrieving
-    from the database, the compressed binary data is deserialized back into NumPy arrays.
-
-    Attributes:
-        impl: Specifies that the data is stored as a LargeBinary (BLOB) object.
-        cache_ok: A SQLAlchemy optimization flag that allows caching the type decorator.
-
-    Methods:
-        process_bind_param(value, dialect):
-            Compresses and serializes the NumPy array into binary data (BLOB) before storing it in the database.
-
-        process_result_value(value, dialect):
-            Decompresses and deserializes the binary data back into a NumPy array after fetching it from the database.
-    """
-
-    impl = LargeBinary  # Data will be stored as a binary large object (BLOB)
-    cache_ok = True  # Allows SQLAlchemy to cache this type if necessary
-
-    def process_bind_param(self, value, dialect):
-        """
-        Compresses and serializes the NumPy array into a binary format before saving to the database.
-
-        Parameters:
-            value (np.ndarray): The NumPy array to store.
-            dialect: The database dialect in use (ignored in this case).
-
-        Returns:
-            bytes: The compressed binary representation of the NumPy array or None if no value is provided.
-        """
-        if value is None:
-            return None
-
-        # Serialize the NumPy array to compressed binary using np.savez_compressed
-        out = io.BytesIO()
-        np.savez_compressed(out, array=value)
-        out.seek(0)  # Rewind the buffer to the beginning
-        return out.read()  # Return the compressed binary data to be stored in the database
-
-    def process_result_value(self, value, dialect):
-        """
-        Decompresses and converts the binary data back into a NumPy array when retrieving from the database.
-
-        Parameters:
-            value (bytes): The compressed binary data retrieved from the database.
-            dialect: The database dialect in use (ignored in this case).
-
-        Returns:
-            np.ndarray: The reconstructed NumPy array or None if no data is available.
-        """
-        if value is None:
-            return None
-
-        # Deserialize the compressed binary data back into a NumPy array using np.load
-        out = io.BytesIO(value)
-        out.seek(0)  # Rewind the buffer to the beginning
-        return np.load(out)['array']
 
 
 class ResultModel(Base):
@@ -391,6 +332,7 @@ class ResultModel(Base):
 
     # Monitor parameters
     frequency_points = Column(NumpyArrayType, nullable=False, index=True)
+    monitor_distances = Column(String, nullable=False, index=True)
 
     # Source parameters
     polarization_angle = Column(NumpyArrayType, nullable=False, index=True)
@@ -408,7 +350,6 @@ class ResultModel(Base):
     trans_power_res_lambda = Column(NumpyArrayType, nullable=True, index=True)
     trans_power_res = Column(NumpyArrayType, nullable=True, index=True)
 
-
     profile_x = Column(NumpyArrayType, nullable=True, index=False)
     profile_y = Column(NumpyArrayType, nullable=True, index=False)
     ref_profile_vectors = Column(NumpyArrayDictType, nullable=True, index=False)
@@ -417,20 +358,20 @@ class ResultModel(Base):
     ref_mag_max_pr_lambda = Column(NumpyArrayDictType, nullable=True, index=False)
     trans_mag_max_pr_lambda = Column(NumpyArrayDictType, nullable=True, index=False)
 
-    ref_mag_res_lambda = Column(NumpyArrayType, nullable=True, index=True)
-    ref_mag_res = Column(NumpyArrayType, nullable=True, index=True)
-    trans_mag_res_lambda = Column(NumpyArrayType, nullable=True, index=True)
-    trans_mag_res = Column(NumpyArrayType, nullable=True, index=True)
+    ref_mag_res_lambda = Column(NumpyArrayDictType, nullable=True, index=True)
+    ref_mag_res = Column(NumpyArrayDictType, nullable=True, index=True)
+    trans_mag_res_lambda = Column(NumpyArrayDictType, nullable=True, index=True)
+    trans_mag_res = Column(NumpyArrayDictType, nullable=True, index=True)
 
     xz_profile_E_vectors = Column(NumpyArrayDictType, nullable=True, index=True)
     xz_profile_P_vectors = Column(NumpyArrayDictType, nullable=True, index=True)
-    xz_profile_x_coord = Column(NumpyArrayType, nullable=True, index=True)
-    xz_profile_z_coord = Column(NumpyArrayType, nullable=True, index=True)
+    xz_profile_x_coord = Column(NumpyArrayDictType, nullable=True, index=True)
+    xz_profile_z_coord = Column(NumpyArrayDictType, nullable=True, index=True)
 
     yz_profile_E_vectors = Column(NumpyArrayDictType, nullable=True, index=True)
     yz_profile_P_vectors = Column(NumpyArrayDictType, nullable=True, index=True)
-    yz_profile_y_coord = Column(NumpyArrayType, nullable=True, index=True)
-    yz_profile_z_coord = Column(NumpyArrayType, nullable=True, index=True)
+    yz_profile_y_coord = Column(NumpyArrayDictType, nullable=True, index=True)
+    yz_profile_z_coord = Column(NumpyArrayDictType, nullable=True, index=True)
 
     # Simulation hash and monitor tracking
     simulation_hash = Column(String, nullable=False, unique=True, index=True)
@@ -487,6 +428,8 @@ class DatabaseHandler:
             sessions (dict): A dictionary holding different SQLAlchemy session instances for various operations.
         """
 
+        self._base = Base
+
         self.db_name = database_name
 
         # Create/open an SQLite database and engine with specified pool size and overflow settings
@@ -509,7 +452,7 @@ class DatabaseHandler:
 
         # Check if the database file exists; if not, create it
         if not os.path.exists(f"{database_name}.db"):
-            self._create_database(declarative_base())
+            self._create_database(self._base)
 
     def _create_database(self, base):
         """
@@ -787,12 +730,20 @@ class DatabaseHandler:
         # Determine if a matching result was found and prepare the list of active monitors
         if matching_result is not None:
             active_monitors = matching_result.active_monitors.split(",")  # Split the active monitors string into a list
+            monitor_distances = matching_result.monitor_distances.split(".:.")
             simulation_exists = True
         else:
             active_monitors = None  # No monitors available if no matching result
+            monitor_distances = []
             simulation_exists = False
 
-        return simulation_exists, active_monitors, matching_result  # Return the existence status, list of monitors, and matching result
+        # Return the existence status, list of monitors, matching result, and how many monitor distances in the result
+        return (
+            simulation_exists,
+            active_monitors,
+            matching_result,
+            monitor_distances
+        )
 
     @db_doorman
     def save_simulation_data(self, simulation_data: dict) -> None:
