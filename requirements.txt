@@ -1,0 +1,11 @@
+numpy
+scipy
+matplotlib
+pillow
+gdspy
+matplotlib
+trimesh
+shapely
+pyqt6
+manifold3d
+sqlalchemy
