@@ -15,7 +15,7 @@ class ScriptedPolygon(Polygon, ScriptedStructure):
 
     __slots__ = ["_vertices", "_z_span"]
 
-    def __init__(self, sim: SimulationInterface, name: str = "polygon", **kwargs: PolygonKwargs):
+    def __init__(self, sim: SimulationInterface, name: str = "polygon", **kwargs: Unpack[PolygonKwargs]):
         # Initialize variables first, then run the super() init.
         self._initialize_variables()
         super().__init__(name, sim, **kwargs)

@@ -59,6 +59,7 @@ class BaseGeometry(Module):
             None
 
         """
+
         kwargs = {"x": x, "y": y, "z": z}
         for k, v in kwargs.items():
             if v is None:
@@ -80,7 +81,9 @@ class BaseGeometry(Module):
         """
         # Extract origin coordinates
         if isinstance(origin, SimulationObjectInterface):
-            origin_x, origin_y = origin.x, origin.y
+            # Get position of the other object in this object's coordinate system.
+            other_pos = origin._get_position(other_object_hierarchy=self._parent_object)
+            origin_x, origin_y = other_pos[:-1]  # Extract the x and y coordinates
         else:
             origin_x, origin_y = origin
 
@@ -109,7 +112,9 @@ class BaseGeometry(Module):
 
         # Extract origin coordinates
         if isinstance(origin, SimulationObjectInterface):
-            origin_x, origin_y, origin_z = origin.x, origin.y, origin.z
+            # Get position of the other object in this object's coordinate system.
+            other_pos = origin._get_position(other_object_hierarchy=self._parent_object)
+            origin_x, origin_y, origin_z = other_pos # Extract the x and y coordinates
         else:
             origin_x, origin_y, origin_z = origin
 

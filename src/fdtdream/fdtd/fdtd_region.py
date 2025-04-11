@@ -1,12 +1,16 @@
 from typing import TypedDict, Unpack, Any, Self
 
+import numpy as np
+import trimesh
+from numpy.typing import NDArray
+
 from .settings import (FDTDAdvancedSettings, FDTDMeshSettings, FDTDBoundaryConditionsSettings, FDTDGeneralSettings,
                        FDTDRegionGeometry)
 from ..base_classes import SimulationObject, ModuleCollection
 from ..resources import validation
 from ..resources.errors import FDTDreamDuplicateFDTDRegionError
 from ..resources.functions import convert_length
-from ..resources.literals import BOUNDARY_TYPES_LOWER
+from ..resources.literals import BOUNDARY_TYPES_LOWER, LENGTH_UNITS
 
 
 class FDTDRegionKwargs(TypedDict, total=False):
@@ -85,6 +89,33 @@ class FDTDRegion(SimulationObject):
             self.settings.geometry.set_dimensions(**dimensions)
         if boundary_types:
             self.settings.boundary_conditions.boundaries.set_boundary_types(**boundary_types)
+
+    def _get_spans(self) -> NDArray[np.float64]:
+        """
+        Fetches the spans of the Rectangle.
+
+        Returns:
+            Three-element numpy vector with the x, y, and z spans. Units in meters.
+        """
+        return np.array([self._get("x span", float), self._get("y span", float), self._get("z span", float)],
+                        dtype=np.float64)
+
+    def _get_trimesh(self, absolute: bool = False, units: LENGTH_UNITS = None) -> trimesh.Trimesh:
+
+        if units is None:
+            units = self._units
+        else:
+            validation.in_literal(units, "units", LENGTH_UNITS)
+
+        # Fetch absolute position
+        position = convert_length(self._get_position(absolute), "m", units)
+        spans = convert_length(self._get_spans(), "m", units)
+
+        # Create a trimesh box
+        polygon: trimesh.Trimesh = trimesh.creation.box(spans)
+        polygon = polygon.apply_translation(position)
+
+        return polygon
 
     def copy(self, name, **kwargs: Unpack[Any]) -> Self:
         raise FDTDreamDuplicateFDTDRegionError("You cannot copy the FDTD region, as a simulation is only allowed "

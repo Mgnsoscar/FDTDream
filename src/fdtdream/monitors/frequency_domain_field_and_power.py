@@ -1,4 +1,4 @@
-from typing import TypedDict, Unpack, Iterable, Self
+from typing import TypedDict, Unpack, Self, List
 
 from .monitor import Monitor
 from .settings import general, data_to_record, spectral_averaging, advanced
@@ -15,7 +15,7 @@ class FreqDomainFieldAndPowerKwargs(TypedDict, total=False):
     x_span: float
     y_span: float
     z_span: float
-    data_to_record: Iterable[DATA_TO_RECORD]
+    data_to_record: List[DATA_TO_RECORD]
     monitor_type: MONITOR_TYPES_ALL
 
 

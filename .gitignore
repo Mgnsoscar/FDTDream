@@ -1,5 +1,5 @@
 .venv
 dist
-tests/
-
+tests/*
 pyproject.toml
+src/fdtdream/temp/*

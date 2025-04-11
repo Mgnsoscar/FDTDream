@@ -5,6 +5,7 @@ from typing import Any, List, TypeVar, Type, Unpack, Self, Tuple
 from warnings import warn
 from copy import copy as pythoncopy
 from itertools import product
+from scipy.spatial.transform import Rotation as R
 
 import numpy as np
 from numpy.typing import NDArray
@@ -134,7 +135,7 @@ class SimulationObject(SimulationObjectInterface, ABC):
         def convert_reference_frame(parent_obj, pos) -> Tuple[NDArray, bool]:
 
             # Account for the position first. Moving the object into the reference system
-            pos += parent_obj._get_position(absolute=False)
+            pos -= parent_obj._get_position(absolute=False)
 
             # Check if the parent is an object that has a rotation. Then the rotation needs to be accounted for.
             if hasattr(parent_obj, "settings") and hasattr(getattr(parent_obj, "settings"), "rotation"):
@@ -148,7 +149,6 @@ class SimulationObject(SimulationObjectInterface, ABC):
 
         # Fetch the coordinates
         x, y, z = self._get("x", float), self._get("y", float), self._get("z", float)
-
         # Create the numpy vector
         position = np.array([x, y, z], dtype=np.float64)
 
@@ -214,25 +214,41 @@ class SimulationObject(SimulationObjectInterface, ABC):
         """
 
         map = {"x": 0, "y": 1, "z": 2}
+        #
+        # # The rotation of the other object's coordinate system.
+        # if hasattr(other_object.settings, "rotation"):
+        #     other_rot = other_object.settings.rotation._get_coordinate_system_rotation()
+        # else:
+        #     other_rot = R.identity()
+        #
+        # # The rotation of this objtct's coordinate system
+        # if hasattr(self.settings, "rotation"):
+        #     this_rot = self.settings.rotation._get_coordinate_system_rotation()
+        # else:
+        #     this_rot = R.identity()
 
         # Fetch the absolute coordinate of the other object in the current object's frame of reference
-        coordinate = getattr(other_object, side[2:])(side[0], absolute=False)
-        position = other_object._get_position(absolute=False)[map[side[0]]]
-        edge = coordinate + position
+        coordinate = getattr(other_object, side[2:])(side[0], absolute=True)
+        position = convert_length(other_object._get_position(absolute=True)[map[side[0]]], "m", self._units)
+        edge_offset = coordinate - position  # To find how far away from the position the edge is
 
-        # Fetch the coordinate of the specified axis
+        # Now find the edge coordinate in the correct reference frame
+        position = convert_length(other_object._get_position(other_object_hierarchy=self)[map[side[0]]],
+                                  "m", self._units)
+        edge = position + edge_offset
+
+        # Fetch the coordinate of the specified axis of this object
         axis_pos = self.pos[map[side[0]]]
 
         # Assign new coordinates
         if side[2:] == "max":
-            # Fetch the min boundary of this object
-            min_value = self.min(side[0])  # type: ignore
-            distance = axis_pos - min_value
-            setattr(self, side[0], edge + self.span(side[0]) + distance + offset)
+            # Fetch the min value along this axis of this object
+            min = self.min(side[0])
+            distance = axis_pos - min
+            setattr(self, side[0], edge + distance + offset)
         else:
-            # Fetch the max boundary of this object
-            min_value = self.max(side[0])  # type: ignore
-            distance = min_value - axis_pos
+            max = self.max(side[0])
+            distance = max - axis_pos
             setattr(self, side[0], edge - distance + offset)
 
         return self.place_next_to
@@ -258,6 +274,20 @@ class SimulationObject(SimulationObjectInterface, ABC):
         corners = np.array(list(product(*zip(min_pos, max_pos))), dtype=np.float64)
 
         return np.unique(corners, axis=0)
+
+    def _max_vec(self, axis: AXES, absolute: bool = False) -> NDArray:
+        position = self._get_position(absolute=True)
+        max_coord = convert_length(self._get(axis + " max", float), "m", self._units)
+        mapping = {"x": 0, "y": 1, "z": 2}
+        position[mapping[axis]] = max_coord
+        return position
+
+    def _min_vec(self, axis: AXES, absolute: bool = False) -> NDArray:
+        position = self._get_position(absolute=True)
+        min_coord = convert_length(self._get(axis + " min", float), "m", self._units)
+        mapping = {"x": 0, "y": 1, "z": 2}
+        position[mapping[axis]] = min_coord
+        return position
 
     def max(self, axis: AXES, absolute: bool = False) -> float:
         max_coord = convert_length(self._get(axis + " max", float), "m", self._units)
@@ -395,8 +425,6 @@ class SimulationObject(SimulationObjectInterface, ABC):
     @pos.setter
     def pos(self, pos: Tuple[float, float, float] | List[float, float, float] | np.ndarray) -> None:
         """Set the position vector of the object."""
-
-        print(pos)
 
         # Validate input type
         if not isinstance(pos, (tuple, list, np.ndarray)):

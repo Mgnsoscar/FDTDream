@@ -126,22 +126,25 @@ class ScriptedStructure(Structure, ABC):
 
         else:
             new_parent = self._closest_parent
+
+        if copied not in new_parent._structures:
+            new_parent._structures.append(copied)
+
+        # Remove closest parent to avoid uneccesary uppdate() calls.
+        copied._closest_parent = None
         #
-        # # Remove closest parent to avoid uneccesary uppdate() calls.
-        # self._closest_parent = None
+        # Copy over the settings modules.
+        copied.settings = self.settings._copy(copied)
         #
-        # # Copy over the settings modules.
-        # copied.settings = self.settings._copy(copied)
+        # Apply kwargs
+        copied._process_kwargs(copied=True, **kwargs)
         #
-        # # Apply kwargs
-        # copied._process_kwargs(copied=True, **kwargs)
+        # Reassign closest parent
+        copied._closest_parent = new_parent
         #
-        # # Reassign closest parent
-        # self._closest_parent = new_parent
-        #
-        # # Update closest parent
-        # if not kwargs.get("new_parent", None):
-        #     self._closest_parent._update()
+        # Update closest parent
+        if not kwargs.get("new_parent", None):
+            self._closest_parent._update()
 
         return copied
 

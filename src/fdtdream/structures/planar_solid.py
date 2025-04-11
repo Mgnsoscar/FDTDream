@@ -162,7 +162,7 @@ class PlanarSolid(Structure):
         # Apply rotations
         mesh.apply_transform(R_y)
         mesh.apply_transform(R_x)
-        print(self._scale)
+
         # Store or process the transformed mesh
         self._create_solid_from_mesh(mesh)
 
@@ -183,7 +183,7 @@ class PlanarSolid(Structure):
         # Reshape faces
         faces = np.array(np.expand_dims(mesh.faces, axis=1).T + 1)
 
-        self._create_solid(vertices,faces)
+        self._create_solid(vertices, faces)
 
     def _get_corners(self, absolute: bool = False) -> NDArray:
 
@@ -206,6 +206,8 @@ class PlanarSolid(Structure):
         faces = self._get("facets", np.ndarray).T[:, 0, :] + -1
 
         mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
+
+        mesh = mesh.apply_translation(convert_length(self._get_position(absolute=True), "m", units))
 
         return mesh
 

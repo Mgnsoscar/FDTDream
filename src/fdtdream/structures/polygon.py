@@ -50,6 +50,10 @@ class PolygonGeometry(BaseGeometry):
             if vertices.shape[1] > 2:
                 raise ValueError(f"Vertices must be an Iterable containing xy- coordinates, no z-coordinates")
             self._set("vertices", convert_length(vertices, self._units, "m"))
+        if z_span := kwargs.get("z_span", None):
+            self._set("z span", convert_length(z_span, self._units, "m"))
+
+
 
 
 class PolygonSettings(StructureSettings):
@@ -151,15 +155,17 @@ class Polygon(Structure):
 
         script = (
             "addpoly();\n"
+            f"set('detail', 0);\n"
             f"set('name', '{self._name}');\n"
             f"set('x', {position[0]});\n"
             f"set('y', {position[1]});\n"
             f"set('z', {position[2]});\n"
-            f"set('vertices', [{";".join([",".join(map(str, row)) for row in vertices])}]);\n"
+            f"set('vertices', [{';'.join([','.join(map(str, row)) for row in vertices])}]);\n"
+            f"set('z span', {self._get('z span', float)});\n"
             f"set('material', '{material}');\n"
         )
         if material == "<Object defined dielectric>":
-            script += f"set('index', '{self._get("index", str)}');\n"
+            script += f"set('index', '{self._get('index', str)}');\n"
         if self.settings.rotation.__getattribute__("_is_rotated"):
             axes, rotations = self.settings.rotation._get_rotation_euler()
             for axis, rotation, que, nr in zip(axes, rotations, ["first", "second", "third"], ["1", "2", "3"]):

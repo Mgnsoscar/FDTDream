@@ -38,7 +38,8 @@ class SimulationObjectInterface(ABC):
         pass
 
     @abstractmethod
-    def _get_position(self, absolute: bool = False) -> NDArray[np.float64]:
+    def _get_position(self, absolute: bool = False,
+                      other_object_hierarchy: SimulationObjectInterface = None) -> NDArray[np.float64]:
         pass
 
     @abstractmethod

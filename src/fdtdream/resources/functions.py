@@ -1,17 +1,18 @@
-from typing import (Any, Type, TypeVar, Union, Tuple, TypedDict)
+import re
+from typing import (Any, Type, TypeVar, Union, Tuple)
 
 import numpy as np
 from numpy import ndarray, bool
 from numpy.typing import NDArray
 from scipy.spatial.transform import Rotation as R
-import re
+from scipy.special import comb
+from shapely import LineString
 
 from . import validation as Validate
 from .constants import DECIMALS
 from .constants import (UNIT_TO_HERTZ, HERTZ_TO_UNIT, UNIT_TO_METERS, METERS_TO_UNIT,
                         UNIT_TO_SECONDS, SECONDS_TO_UNIT)
 from .literals import (FREQUENCY_UNITS, LENGTH_UNITS, TIME_UNITS)
-
 
 # region Type variables
 T = TypeVar("T")
@@ -266,6 +267,29 @@ def transform_position_with_rotation(pos: np.ndarray, rot_vec: np.ndarray, rot_a
     rounded_pos = np.round(rotated_pos, decimals=DECIMALS)
 
     return rounded_pos
+
+
+def bezier_curve(control_points, num_points=100) -> LineString:
+    """
+    Evaluates a Bézier curve defined by control_points.
+
+    Parameters:
+        control_points: list of (x, y) tuples or np.array shape (n, 2)
+        num_points: number of points to generate on the curve
+
+    Returns:
+        np.array of shape (num_points, 2)
+    """
+    control_points = np.array(control_points)
+    n = len(control_points) - 1
+    t = np.linspace(0, 1, num_points)
+
+    curve = np.zeros((num_points, 2))
+    for i in range(n + 1):
+        bernstein = comb(n, i) * (t ** i) * ((1 - t) ** (n - i))
+        curve += np.outer(bernstein, control_points[i])
+
+    return LineString(curve)
 
 # endregion Geometry
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from typing import TypedDict, Unpack, Sequence, TypeVar, Self, List
+from typing import TypedDict, Unpack, Sequence, TypeVar, Self, List, overload, Union
 
+import shapely
 import trimesh
+import numpy as np
 
 from .scripted_structures import *
 from .settings import StructureSettings
@@ -20,6 +22,7 @@ from .planar_solid import PlanarSolidKwargs
 from ..base_classes import BaseGeometry, Module
 from ..resources.functions import convert_length
 from ..resources.literals import AXES, LENGTH_UNITS
+from ..resources.materials_literal import Materials
 from ..resources import validation
 
 T = TypeVar("T")
@@ -84,6 +87,59 @@ class Add(Module):
         solid._add_parent(self._parent_object)
         self._parent_object._update()
         return solid
+
+    @overload
+    def shapely_polygons(self, name: str, polygons: shapely.Polygon,
+                         polygon_material: Materials,
+                         hole_material: Materials = ...,
+                         z_span: float = ...) -> ScriptedPolygon:
+        ...
+
+    @overload
+    def shapely_polygons(self, name: str, polygons: List[shapely.Polygon],
+                         polygon_material: Materials,
+                         hole_material: Materials = ...,
+                         z_span: float = ...) -> List[ScriptedPolygon]:
+        ...
+
+    # Actual implementation
+    def shapely_polygons(self, name: str, polygons: Union[shapely.Polygon, List[shapely.Polygon]],
+                         polygon_material: Materials,
+                         hole_material: Materials = "etch",
+                         z_span: float = 100) -> Union[ScriptedPolygon, List[ScriptedPolygon]]:
+        """Adds polygons to the structure group defined by an input list of shapely polygons.
+           The polygons will be placed as defined in the shapely polygon object.
+           Returns either a single Polygon object or a list of Polygon objects depending on the input."""
+
+        # Handle single polygon input
+        if isinstance(polygons, shapely.Polygon):
+            polygons = [polygons]  # Convert to list for uniform processing
+
+        bulk_polygons = []
+        hole_polygons = []
+
+        for polygon in polygons:
+            bulk_polygons.append(ScriptedPolygon(self._parent_object._sim, name, z_span=z_span,
+                                                 vertices=np.array(polygon.exterior.coords),
+                                                 material=polygon_material)
+                                 )
+            for interior in polygon.interiors:
+                hole_polygons.append(ScriptedPolygon(self._parent_object._sim, name, z_span=z_span,
+                                                     vertices=np.array(interior.coords),
+                                                     material=hole_material)
+                                     )
+        all_polygons = bulk_polygons + hole_polygons
+        for polygon in all_polygons:
+            polygon._add_parent(self._parent_object)
+
+        self._parent_object._update()
+
+        # Return either a single polygon or a list of polygons
+        if isinstance(polygons, list):
+            return all_polygons
+        else:
+            return all_polygons[0]  # Return a single ScriptedPolygon if single input was passed
+
 
 # endregion Add Module
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import Optional, Any, cast, Iterable, Tuple, Self, Literal, List
+from scipy.spatial.transform import Rotation
 
 import numpy as np
 from numpy.typing import NDArray
@@ -99,6 +100,34 @@ class Structure(SimulationObject, StructureInterface, ABC):
     # endregion Dev. Methods
 
     # region User Methods
+
+    def _min_vec(self, axis: AXES, absolute: bool = False) -> NDArray:
+
+        # Get the trimesh polygon
+        poly = self._get_trimesh(absolute)
+        vertices = poly.vertices
+        mapping = {"x": 0, "y": 1, "z": 2}
+
+        index_max = np.argmin(vertices[:, mapping[axis]])
+
+        # Get the vector with the greatest z value
+        vector_max = vertices[index_max]
+
+        return vector_max
+
+    def _max_vec(self, axis: AXES, absolute: bool = False) -> NDArray:
+
+        # Get the trimesh polygon
+        poly = self._get_trimesh(absolute)
+        vertices = poly.vertices
+        mapping = {"x": 0, "y": 1, "z": 2}
+
+        index_max = np.argmax(vertices[:, mapping[axis]])
+
+        # Get the vector with the greatest z value
+        vector_max = vertices[index_max]
+
+        return vector_max
 
     def min(self, axis: AXES, absolute: bool = False) -> float:
 

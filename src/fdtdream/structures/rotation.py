@@ -51,30 +51,64 @@ class Rotation(Module):
 
         return axes, np.array(rotations, dtype=np.float64)
 
+    def _get_coordinate_system_rotation(self) -> Rotation:
+        """Returns the rotation of the coordinate system the structure belongs to."""
+
+        # Start with identity rotation
+        total_rotation = R.identity()
+
+        for parent in self._parent_object._parents:
+            # Get local Euler rotation and convert to radians
+            axes, angles = parent.settings.rotation._get_rotation_euler()
+            if angles.size == 0:
+                continue
+            angles = np.deg2rad(angles)
+
+            # Compose rotation for current object/group
+            local_rotation = R.identity()
+            for axis, angle in zip(axes, angles):
+                local_rotation = local_rotation * R.from_euler(axis, angle)
+
+            # Multiply into total rotation (note the order)
+            total_rotation = local_rotation * total_rotation
+
+            if parent._get("use relative coordinates", bool):
+                break
+
+        return total_rotation
+
+
     def _get_rotation_rot_vec(self) -> Tuple[NDArray, np.float64]:
         """
-        Returns the current rotation state as a rotation vector and an angle in radians.
-
-        Returns:
-            A tuple where the first element is a three element numpy array (vector), and the second the rotation angle
-            around that vector.
-
+        Returns the total rotation state of the object, including any parent group rotations.
+        Represented as a rotation vector and angle in radians.
         """
-        # Fetch rotation state and convert angles to radians
-        axes, angles = self._get_rotation_euler()
-        angles = np.deg2rad(angles)
+        # Start with identity rotation
+        total_rotation = R.identity()
 
-        # Create a Rotation object by applying individual rotations
-        rotation = R.identity()  # Start with the identity rotation (no rotation)
+        for parent in [self._parent_object] + self._parent_object._parents:
+            # Get local Euler rotation and convert to radians
+            axes, angles = parent.settings.rotation._get_rotation_euler()
+            if angles.size == 0:
+                continue
+            angles = np.deg2rad(angles)
 
-        for axis, angle in zip(axes, angles):
-            rotation = rotation * R.from_euler(axis, angle)
+            # Compose rotation for current object/group
+            local_rotation = R.identity()
+            for axis, angle in zip(axes, angles):
+                local_rotation = local_rotation * R.from_euler(axis, angle)
 
-        # Convert to axis-angle representation
-        axis = rotation.as_rotvec()  # axis is a vector, angle is in radians
-        angle = np.linalg.norm(axis)
+            # Multiply into total rotation (note the order)
+            total_rotation = local_rotation * total_rotation
 
-        return axis.astype(np.float64), angle.astype(np.float64)
+            if parent._get("use relative coordinates", bool):
+                break
+
+        # Convert total rotation to axis-angle
+        rotvec = total_rotation.as_rotvec()
+        angle = np.linalg.norm(rotvec)
+
+        return rotvec.astype(np.float64), angle.astype(np.float64)
 
     def _is_rotated(self) -> bool:
         """
@@ -167,7 +201,7 @@ class Rotation(Module):
                 object. If the latter, the other object's position will be used.
 
         Returns:
-            The method itself, allowing the user to stack the method.
+            Reference to the rotate() method, allowing the user to stack rotations.
         """
         self.reset_rotation()
         self.rotate(rot_vec, rot_angle, rot_point)

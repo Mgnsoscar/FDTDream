@@ -3,15 +3,16 @@ from __future__ import annotations
 import sys
 import os
 import warnings
-from typing import List, Any, ClassVar, Type, TypeVar
+from typing import List, Any, ClassVar, Type, TypeVar, Tuple
 import re
+from itertools import product
 import pickle
 
 from .add import Add
 from ..interfaces import SimulationInterface, SimulationObjectInterface
 from ..lumapi import Lumapi
 from ..resources import errors
-from ..resources.functions import get_unique_name
+from ..resources.functions import get_unique_name, convert_length
 from ..resources.literals import LENGTH_UNITS
 from .. import structures
 from .. import monitors
@@ -22,6 +23,10 @@ from ..structures.scripted_structures import *
 from ..mesh import Mesh
 from ..results.saved_simulation import SavedSimulation
 from ..database import DatabaseHandler
+import numpy as np
+from trimesh.boolean import intersection
+import trimesh
+from ..results.plotted_structure import PlottedStructure
 
 T = TypeVar("T")
 
@@ -433,6 +438,120 @@ class Simulation(SimulationInterface):
 
     # region User Methods
 
+    def _extract_meshes(self) -> List[PlottedStructure]:
+
+        # Fetch all structure meshes
+        all_structures = [struct for struct in self._structures if struct._get("material", str) != "etch"]
+        etch_structures = [struct._get_trimesh(absolute=True, units="nm")
+                           for struct in self._structures if struct._get("material", str) == "etch"]
+        meshes = []
+
+        # Get FDTD box mesh and center (in nm)
+        fdtd = self._fdtd
+        fdtd_mesh = self._fdtd._get_trimesh(absolute=True, units="nm")
+        fdtd_position = convert_length(self._fdtd._get_position(absolute=True), "m", "nm")
+        fdtd_center = fdtd_position  # assuming this is the centroid of the FDTD region
+
+        # Get boundary conditions
+        x_bc = self._fdtd._get("x min bc", str).lower()
+        y_bc = self._fdtd._get("y min bc", str).lower()
+        z_bc = self._fdtd._get("z min bc", str).lower()
+
+        # Get truth values for what boundaries are symmetric
+        x_sym = x_bc in ["symmetric", "anti-symmetric"]
+        y_sym = y_bc in ["symmetric", "anti-symmetric"]
+        z_sym = z_bc in ["symmetric", "anti-symmetric"]
+
+        # Make the fdtd region only the part that will be mirrored, not the other regions.
+        mirrored_regions = []
+        epsilon = - 0.1  # Slight buffer to make sure tangenting meshes overlap.
+        if x_sym:
+            x_span = fdtd.x_span / 2
+            m = trimesh.creation.box((x_span + epsilon, fdtd.y_span, fdtd.z_span))
+            m.apply_translation(fdtd_position - np.array([x_span / 2, 0, 0]))
+            mirrored_regions.append(m)
+        if y_sym:
+            y_span = fdtd.y_span / 2
+            m = trimesh.creation.box((fdtd.x_span, y_span + epsilon, fdtd.z_span))
+            m.apply_translation(fdtd_position - np.array([0, y_span / 2, 0]))
+            mirrored_regions.append(m)
+
+        if z_sym:
+            z_span = fdtd.z_span / 2
+            m = trimesh.creation.box((fdtd.x_span, fdtd.y_span, z_span + epsilon))
+            m.apply_translation(fdtd_position - np.array([0, 0, z_span / 2]))
+            mirrored_regions.append(m)
+
+        if mirrored_regions:
+            fdtd_mesh = trimesh.boolean.difference([fdtd_mesh, trimesh.boolean.union(mirrored_regions)])
+
+        # Define mirror directions
+        mirror_axes = []
+        if x_sym:
+            mirror_axes.append([-1, 1])
+        else:
+            mirror_axes.append([1])
+        if y_sym:
+            mirror_axes.append([-1, 1])
+        else:
+            mirror_axes.append([1])
+        if z_sym:
+            mirror_axes.append([-1, 1])
+        else:
+            mirror_axes.append([1])
+
+        def mirror_structure(struct, parent_group) -> PlottedStructure | None:
+            org_mesh = struct._get_trimesh(absolute=True, units="nm")
+
+            # Remove potential etches
+            if etch_structures:
+                org_mesh = trimesh.boolean.difference([org_mesh] + etch_structures)
+
+            mirrored = []
+
+            try:
+                # Get the portion of the structure that is inside the mirrored region
+                mirror_part = trimesh.boolean.intersection([org_mesh, fdtd_mesh])
+
+                # Return None if no part of the structure is inside the region.
+                if mirror_part.is_empty:
+                    return None
+
+                # Mirror across symmetric axes (assumes mirroring around the fdtd_center)
+                for scale in product(*mirror_axes):
+                    if scale == (1, 1, 1):
+                        mirrored.append(mirror_part)
+                    else:
+                        m = mirror_part.copy()
+                        m.apply_translation(-fdtd_center)
+                        m.apply_scale(scale)
+                        m.apply_translation(fdtd_center)
+                        mirrored.append(m)
+
+            except Exception as e:
+                print(f"Warning: Mirroring failed for structure '{structure.name}': {e}")
+
+            # Combine original and mirrored pieces
+            try:
+                recombined_struct = trimesh.boolean.union(mirrored)
+            except Exception as e:
+                print(f"Warning: Concatenation failed for '{structure.name}': {e}")
+                recombined_struct = org_mesh
+
+            plotted_structure = PlottedStructure(structure.name, recombined_struct, parent_structure=parent_group)
+
+            return plotted_structure
+
+        for structure in all_structures:
+
+            meshes.append(mirror_structure(structure, None))
+
+            if hasattr(structure, "_structures"):
+                for substruct in structure._structures:
+                    meshes.append(mirror_structure(substruct, structure))
+
+        return meshes
+
     def run(self, simulation_name: str, parameters: dict[str, float | str] = None,
             category: str = "General") -> SavedSimulation:
 
@@ -447,6 +566,21 @@ class Simulation(SimulationInterface):
         if self._fdtd is None:
             raise errors.FDTDreamNoSimulationRegionError("Cannot run simulation, as no FDTD Region is defined.")
 
+        # Extract structure meshes
+        meshes = self._extract_meshes()
+
+        # Save simulation to temp file
+        # Create the temp folder at the same level as the parent directory
+        script_dir = os.path.dirname(os.path.abspath(__file__))  # Current script location
+        parent_dir = os.path.dirname(script_dir)  # Go one level up
+        temp_dir = os.path.join(parent_dir, "temp")  # Path to temp folder
+
+        os.makedirs(temp_dir, exist_ok=True)  # Ensure temp folder exists
+
+        # Create a temporary .fsp file
+        temp_fsp_path = os.path.join(temp_dir, "temp_simulation.fsp")
+        self.save(temp_fsp_path)  # Save simulation to temp file
+
         # Run the simulation
         self._lumapi().switchtolayout()
         self._lumapi().run()
@@ -458,11 +592,6 @@ class Simulation(SimulationInterface):
                 continue
             if isinstance(monitor, monitors.FreqDomainFieldAndPowerMonitor):
                 results.append(monitor._get_results())
-
-        # Fetch all structure meshes
-        meshes = []
-        for structure in self._structures:
-            meshes.append((structure.name, structure._get_trimesh(absolute=True, units="nm")))
 
         saved_sim = SavedSimulation(parameters, category, meshes, results)
 
@@ -476,6 +605,26 @@ class Simulation(SimulationInterface):
             pickle.dump(saved_sim, f)
 
         self._lumapi().switchtolayout()
+
+        # Delete the temp file when it's no longer needed
+        try:
+            os.remove(temp_fsp_path)
+        except OSError as e:
+            print(f"Error deleting temp file: {e}")
+
+        # **Delete additional log files if they exist**
+        save_path = temp_fsp_path
+        base_name = os.path.splitext(os.path.basename(save_path))[0]  # Get filename without extension
+        log_files = [f"{base_name}_p0.log", f"{base_name}_p0.err"]
+
+        for log_file in log_files:
+            log_file_path = os.path.join(os.path.dirname(save_path), log_file)
+            if os.path.exists(log_file_path):
+                try:
+                    os.remove(log_file_path)
+                    print(f"Deleted: {log_file_path}")
+                except OSError as e:
+                    print(f"Error deleting {log_file_path}: {e}")
 
         return saved_sim
 
@@ -670,5 +819,35 @@ def read_construction_group(cg: structures.StructureGroup, code_lines: List[str]
         new_objects.append(new_object)
 
     return new_objects
+
+def extract_effective_lines(code_str: str) -> list[str]:
+    """Takes in Lumerical Scripting language and returns a list with each line of code that actually does anything."""
+
+    effective_lines = []
+    current_statement = ""
+
+    # Process the code line by line
+    for line in code_str.splitlines():
+
+        # Remove any comment (anything after '#' is ignored)
+        code_without_comment = line.split('#', 1)[0].strip()
+        if not code_without_comment:
+            continue  # skip empty lines
+
+        # Accumulate the code, adding a space for separation if needed
+        current_statement += code_without_comment + " "
+
+        # Process the accumulated code until all effective lines (terminated by ;) are extracted
+        while ';' in current_statement:
+            # Split on the first semicolon
+            statement, remainder = current_statement.split(';', 1)
+            if statement.strip():
+                effective_lines.append(statement.strip())
+            current_statement = remainder.strip()
+
+        # Add back the ; separators.
+    effective_lines = [line + ";" for line in effective_lines]
+
+    return effective_lines
 
 # endregion

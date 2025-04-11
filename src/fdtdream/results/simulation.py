@@ -75,7 +75,7 @@
 #     effective_lines = [line + ";" for line in effective_lines]
 #
 #     return effective_lines
-#
+
 #
 # def read_construction_code(line: str, sim: SimulationInterface, current_object: ScriptedStructure | None,
 #                            objects: list) -> ScriptedStructure:

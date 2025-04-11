@@ -217,7 +217,7 @@ class RegularPolygon(Structure):
         for k, v in kwargs.items():
             if k in ["x", "y", "z"]:
                 position[k] = v
-            elif k in ["nr_sides", "inner_radius", "outer_radius", "side_length"]:
+            elif k in ["nr_sides", "inner_radius", "outer_radius", "side_length", "z_span"]:
                 dimensions[k] = v
             elif k in ["rot_vec", "rot_angle", "rot_point"]:
                 rotation[k] = v
