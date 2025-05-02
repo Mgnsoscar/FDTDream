@@ -61,6 +61,7 @@ C:\Program Files\Lumerical\v241\api\python\lumapi.py
 One of FDTDream's key features is its powerful auto-completion and structured documentation. Lumerical's FDTD desktop application has a complex interface with deeply nested menus and options, which can be difficult to translate into a pure Python workflow. FDTDream addresses this challenge by organizing simulation objects into well-structured submodules that closely mirror the original application's hierarchy. This design makes navigation intuitive and enables users to explore available options efficiently. To facilitate this, FDTDream leverages auto-completion, allowing users to "scroll" through available properties and methods instead of memorizing their locations.
 
 For instance, adding an FDTD Region and modifying its boundary conditions is as simple as:
+
 ```python
 from fdtdream import FDTDream
 
@@ -68,7 +69,7 @@ from fdtdream import FDTDream
 sim = FDTDream.new_simulation("test_simulation")
 
 # Add an FDTD Region
-fdtd = sim.add.simulation.fdtd_region()
+fdtd = sim.add._parent.fdtd_region()
 fdtd.settings.boundary_conditions.boundaries.set_boundary_types(
     x_min="anti_symmetric", x_max="anti-symmetric",
     y_min="symmetric", y_max="symmetric"

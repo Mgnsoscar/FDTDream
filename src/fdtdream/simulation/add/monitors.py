@@ -26,24 +26,23 @@ class Monitors:
 
     def power(self, name: str, **kwargs: Unpack[FreqDomainFieldAndPowerKwargs]) -> FreqDomainFieldAndPowerMonitor:
         self._check_name(name)
-        self._lumapi().addpower()
-        self._lumapi().set("name", name)
+        self._lumapi().addpower({"name": name})
+        if "data_to_record" not in kwargs:
+            kwargs["data_to_record"] = ["power"]  # type: ignore
         power = FreqDomainFieldAndPowerMonitor(name, self._sim, **kwargs)
         self._sim._monitors.append(power)
         return power
 
     def profile(self, name: str, **kwargs: Unpack[FreqDomainFieldAndPowerKwargs]) -> FreqDomainFieldAndPowerMonitor:
         self._check_name(name)
-        self._lumapi().addprofile()
-        self._lumapi().set("name", name)
+        self._lumapi().addprofile({"name": name})
         profile = FreqDomainFieldAndPowerMonitor(name, self._sim, **kwargs)
         self._sim._monitors.append(profile)
         return profile
 
     def index(self, name: str, **kwargs: Unpack[IndexMonitorKwargs]) -> IndexMonitor:
         self._check_name(name)
-        self._lumapi().addindex()
-        self._lumapi().set("name", name)
+        self._lumapi().addindex({"name": name})
         index_monitor = IndexMonitor(name, self._sim, **kwargs)
         self._sim._monitors.append(index_monitor)
         return index_monitor

@@ -28,7 +28,6 @@ class FDTDRegionKwargs(TypedDict, total=False):
     z_max_bc: BOUNDARY_TYPES_LOWER
 
 
-
 class FDTDRegionSettings(ModuleCollection):
     general: FDTDGeneralSettings
     geometry: FDTDRegionGeometry

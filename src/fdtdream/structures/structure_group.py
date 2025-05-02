@@ -307,5 +307,10 @@ class StructureGroup(Structure):
         """Returns the list of scripted structures in the structure group."""
         return self._structures
 
+    @property
+    def material(self) -> str:
+        """Returns the material of the structure."""
+        return "None"
+
 # endregion Structure Group
 

@@ -27,24 +27,21 @@ class Sources:
 
     def plane_wave(self, name: str, **kwargs: Unpack[PlaneWaveKwargs]) -> PlaneWave:
         self._check_name(name)
-        self._lumapi().addplane()
-        self._lumapi().set("name", name)
+        self._lumapi().addplane({"name": name})
         plane_wave = PlaneWave(name, self._sim, **kwargs)
         self._sim._sources.append(plane_wave)
         return plane_wave
 
     def gaussian(self, name: str, **kwargs: Unpack[GaussianBeamKwargs]) -> GaussianBeam:
         self._check_name(name)
-        self._lumapi().addgaussian()
-        self._lumapi().set("name", name)
+        self._lumapi().addgaussian({"name": name})
         gaussian = GaussianBeam(name, self._sim, **kwargs)
         self._sim._sources.append(gaussian)
         return gaussian
 
     def cauchy_lorentzian(self, name: str, **kwargs: Unpack[CauchyLorentzianBeamKwargs]) -> CauchyLorentzianBeam:
         self._check_name(name)
-        self._lumapi().addgaussian()
-        self._lumapi().set("name", name)
+        self._lumapi().addgaussian({"name": name})
         cl_beam = CauchyLorentzianBeam(name, self._sim, **kwargs)
         self._sim._sources.append(cl_beam)
         return cl_beam

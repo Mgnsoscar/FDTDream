@@ -29,88 +29,77 @@ class Structures:
 
     def structure_group(self, name: str, **kwargs: Unpack[StructureGroupKwargs]) -> StructureGroup:
         self._check_name(name)
-        self._lumapi().addstructuregroup()
-        self._lumapi().set("name", name)
+        self._lumapi().addstructuregroup({"name": name})
         structure_group = StructureGroup(name, self._sim, **kwargs)
         self._sim._structures.append(structure_group)
         return structure_group
 
     def lattice(self, name: str, **kwargs: Unpack[LatticeKwargs]) -> Lattice:
         self._check_name(name)
-        self._lumapi().addstructuregroup()
-        self._lumapi().set("name", name)
+        self._lumapi().addstructuregroup({"name": name})
         lattice = Lattice(name, self._sim, **kwargs)
         self._sim._structures.append(lattice)
         return lattice
 
     def rectangle(self, name: str, **kwargs: Unpack[RectangleKwargs]) -> Rectangle:
         self._check_name(name)
-        self._lumapi().addrect()
-        self._lumapi().set("name", name)
+        self._lumapi().addrect({"name": name})
         rectangle = Rectangle(name, self._sim, **kwargs)
         self._sim._structures.append(rectangle)
         return rectangle
 
     def circle(self, name: str, **kwargs: Unpack[CircleKwargs]) -> Circle:
         self._check_name(name)
-        self._lumapi().addcircle()
-        self._lumapi().set("name", name)
+        self._lumapi().addcircle({"name": name})
         circle = Circle(name, self._sim, **kwargs)
         self._sim._structures.append(circle)
         return circle
 
     def sphere(self, name: str, **kwargs: Unpack[SphereKwargs]) -> Sphere:
         self._check_name(name)
-        self._lumapi().addsphere()
-        self._lumapi().set("name", name)
+        self._lumapi().addsphere({"name": name})
         sphere = Sphere(name, self._sim, **kwargs)
         self._sim._structures.append(sphere)
         return sphere
 
     def ring(self, name: str, **kwargs: Unpack[RingKwargs]) -> Ring:
         self._check_name(name)
-        self._lumapi().addring()
-        self._lumapi().set("name", name)
+        self._lumapi().addring({"name": name})
         ring = Ring(name, self._sim, **kwargs)
         self._sim._structures.append(ring)
         return ring
 
     def pyramid(self, name: str, **kwargs: Unpack[PyramidKwargs]) -> Pyramid:
         self._check_name(name)
-        self._lumapi().addpyramid()
-        self._lumapi().set("name", name)
+        self._lumapi().addpyramid({"name": name})
         pyramid = Pyramid(name, self._sim, **kwargs)
         self._sim._structures.append(pyramid)
         return pyramid
 
     def polygon(self, name: str, **kwargs: Unpack[PolygonKwargs]) -> Polygon:
         self._check_name(name)
-        self._lumapi().addpoly()
-        self._lumapi().set("name", name)
+        self._lumapi().addpoly({"name": name})
         polygon = Polygon(name, self._sim, **kwargs)
         self._sim._structures.append(polygon)
         return polygon
 
     def regular_polygon(self, name: str, **kwargs: Unpack[RegularPolygonKwargs]) -> RegularPolygon:
         self._check_name(name)
-        self._lumapi().addpoly()
-        self._lumapi().set("name", name)
+        self._lumapi().addpoly({"name": name})
         polygon = RegularPolygon(name, self._sim, **kwargs)
         self._sim._structures.append(polygon)
         return polygon
 
     def triangle(self, name: str, **kwargs: Unpack[TriangleKwargs]) -> Triangle:
         self._check_name(name)
-        self._lumapi().addpoly()
-        self._lumapi().set("name", name)
+        self._lumapi().addpoly({"name": name})
         tri = Triangle(name, self._sim, **kwargs)
         self._sim._structures.append(tri)
         return tri
 
     def planar_solid(self, name: str, **kwargs: Unpack[PlanarSolidKwargs]) -> PlanarSolid:
         self._check_name(name)
-        self._lumapi().addplanarsolid()
-        self._lumapi().set("name", name)
+        self._lumapi().addplanarsolid({"name": name})
         solid = PlanarSolid(name, self._sim, **kwargs)
         self._sim._structures.append(solid)
         return solid

@@ -22,8 +22,6 @@ Materials = Literal[
     'W (Tungsten) - CRC',
     'TiO2 (Titanium Dioxide) - Devore',
     'Si3N4 (Silicon Nitride) - Phillip',
-    'Glue Type 2',
-    'Glue Type 1',
     'Sn (Tin) - Palik',
     'Cr (Chromium) - Palik',
     'Fe (Iron) - Palik',

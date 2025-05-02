@@ -63,7 +63,7 @@ class PlottedStructure:
         self._fill_alpha = kwargs.get("fill_alpha", 0.5)
         self._fill_color = kwargs.get("fill_color", "black")
 
-        self._projection_outline = kwargs.get("projection_outline", True)
+        self._projection_outline = kwargs.get("projection_outline", False)
         self._outline_linestyle = kwargs.get("outline_linestyle", "solid")
         self._outline_alpha = kwargs.get("outline_alpha", 1)
         self._outline_color = kwargs.get("outline_color", "black")
@@ -439,11 +439,14 @@ class PlottedStructure:
         Removes the plotted structure from the plot.
         """
         for artist in self._fill_artists:
-            artist.remove()
+            if artist.axes:
+                artist.remove()
         for artist in self._outline_artists:
-            artist.remove()
+            if artist.axes:
+                artist.remove()
         for artist in self._intersection_artists:
-            artist.remove()
+            if artist.axes:
+                artist.remove()
         self._fill_artists.clear()
         self._outline_artists.clear()
         self._intersection_artists.clear()

@@ -27,8 +27,7 @@ class Simulation:
 
     def mesh(self, name: str, **kwargs: Unpack[MeshKwargs]) -> Mesh:
         self._check_name(name)
-        self._lumapi().addmesh()
-        self._lumapi().set("name", name)
+        self._lumapi().addmesh({"name": name})
         mesh = Mesh(name, self._sim, **kwargs)
         self._sim._meshes.append(mesh)
         return mesh

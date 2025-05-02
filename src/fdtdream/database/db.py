@@ -1,147 +1,326 @@
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, PickleType, LargeBinary
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker
-import os
-import tempfile
-from ..results import SavedSimulation
-from ..results.field_and_power_monitor import Field
-from .custom_types import NumpyArrayType
+from __future__ import annotations
+
+import io
+from typing import List
+from typing import Optional, Tuple
+
+import numpy as np
+from numpy.typing import NDArray
+from sqlalchemy import Column, Integer, String, ForeignKey, JSON
+from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.types import TypeDecorator, LargeBinary
+from trimesh import Trimesh
+
+from typing import List, Dict, Optional
+from matplotlib.collections import PolyCollection
+from matplotlib.path import Path
+import matplotlib.path as mpath
+from matplotlib.patches import PathPatch
+import matplotlib.patches as mpatches
+import shapely.geometry as geom
+from shapely import MultiPolygon
+import shapely.ops as ops
+import trimesh
+
+
+class NumpyArrayType(TypeDecorator):
+    impl = LargeBinary
+    cache_ok = True  # Required for SQLAlchemy 1.4+
+
+    def process_bind_param(self, value: Optional[np.ndarray], dialect):
+        if value is None:
+            return None
+        with io.BytesIO() as buf:
+            # Save both array data + metadata
+            np.save(buf, value, allow_pickle=False)  # type: ignore
+            return buf.getvalue()
+
+    def process_result_value(self, value: Optional[bytes], dialect):
+        if value is None:
+            return None
+        with io.BytesIO(value) as buf:
+            return np.load(buf, allow_pickle=False)
 
 
 Base = declarative_base()
 
 
-class SavedSimulationDB(Base):
-    __tablename__ = "saved_simulations"
+class SimulationModel(Base):
+    __tablename__ = 'simulations'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    category = Column(String)
-    parameters = Column(PickleType)  # Store parameters as a dictionary
-    fsp_file = Column(LargeBinary)   # Store the .fsp file as binary
+    id: int = Column(Integer, primary_key=True)
+    category: str = Column(String)
+    name: str = Column(String)
+    parameters: dict = Column(JSON, nullable=True)
 
-    structures = relationship("StructureDB", back_populates="simulation", cascade="all, delete-orphan")
-    monitor_results = relationship("MonitorResultDB", back_populates="simulation", cascade="all, delete-orphan")
+    _monitors = relationship(
+        "MonitorModel",
+        back_populates="_simulation",
+        cascade="all, delete-orphan"
+    )
+    _structures = relationship(
+        "StructureModel",
+        back_populates="_simulation",
+        cascade="all, delete-orphan"
+    )
+
+    @property
+    def monitors(self) -> List[MonitorModel]:
+        return self._monitors
+
+    @property
+    def structures(self) -> List[StructureModel]:
+        return self._structures
 
 
-class StructureDB(Base):
+class StructureModel(Base):
     __tablename__ = "structures"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    simulation_id = Column(Integer, ForeignKey("saved_simulations.id"))
-    name = Column(String)
-    trimesh_data = Column(PickleType)  # Store Trimesh objects as binary
+    id: int = Column(Integer, primary_key=True)
+    simulation_id: int = Column(Integer, ForeignKey("simulations.id"))
+    name: str = Column(String)
+    vertices: NDArray = Column(NumpyArrayType)
+    faces: NDArray = Column(NumpyArrayType)
 
-    simulation = relationship("SavedSimulationDB", back_populates="structures")
+    _simulation = relationship("SimulationModel", back_populates="_structures")
+
+    @property
+    def simulation(self) -> SimulationModel:
+        return self._simulation
+
+    def get_trimesh(self) -> Trimesh:
+        """Reconstructs a trimesh object from the array of vertices and the array of face connections."""
+        mesh = Trimesh(self.vertices, self.faces)
+        return mesh
+
+    def get_projection_and_intersection(self, x_coords: NDArray, y_coords: NDArray,
+                                        z_coords: NDArray) -> Tuple[dict, dict]:
+        """
+        Generate projections and intersection slices from a trimesh object.
+
+        Returns:
+            - projection_artists: Dict[str, PolyCollection]
+            - intersection_slices: Dict[str, List[Optional[PolyCollection]]]
+        """
+
+        def polygon_to_pathpatch(p):
+            """Create a PathPatch (with holes) from a shapely Polygon."""
+            if p.geom_type == "MultiPolygon":
+                return multipolygon_to_single_pathpatch(p)
+
+            verts = []
+            codes = []
+
+            # Exterior ring
+            ext_coords = np.array(p.exterior.coords)
+            verts.extend(ext_coords)
+            codes.extend(
+                [mpath.Path.MOVETO] + [mpath.Path.LINETO] * (len(ext_coords) - 2) + [mpath.Path.CLOSEPOLY])
+
+            # Interior rings (holes)
+            for intr in p.interiors:
+                intr_coords = np.array(intr.coords)
+                verts.extend(intr_coords)
+                codes.extend(
+                    [mpath.Path.MOVETO] + [mpath.Path.LINETO] * (len(intr_coords) - 2) + [mpath.Path.CLOSEPOLY])
+
+            path = mpath.Path(verts, codes)
+            patch_ = mpatches.PathPatch(path)
+            return patch_
+
+        def multipolygon_to_single_pathpatch(multipolygon_):
+            """Create a single PathPatch from a MultiPolygon (with all holes and parts combined)."""
+            vertices_ = []
+            codes_ = []
+
+            for polygon_ in multipolygon_.geoms:
+                # Exterior
+                ext_ = np.array(polygon_.exterior.coords)
+                vertices_.extend(ext_)
+                codes_.extend([mpath.Path.MOVETO] + [mpath.Path.LINETO] * (len(ext_) - 2) + [mpath.Path.CLOSEPOLY])
+
+                # Interiors (holes)
+                for interior_ in polygon_.interiors:
+                    hole_ = np.array(interior_.coords)
+                    vertices_.extend(hole_)
+                    codes_.extend([mpath.Path.MOVETO] + [mpath.Path.LINETO] * (len(hole_) - 2) + [mpath.Path.CLOSEPOLY])
+
+            vertices_ = np.array(vertices_)
+            codes_ = np.array(codes_)
+
+            path_ = mpath.Path(vertices_, codes_)
+            patch_ = mpatches.PathPatch(path_)
+            return patch_
+
+        # Fetch attributes
+        mesh = self.get_trimesh()
+
+        projection_artists: Dict[str, mpatches.PathPatch] = {}
+        intersection_slices: Dict[str, List[Optional[mpatches.PathPatch]]] = {
+            "xy": [],
+            "xz": [],
+            "yz": []
+        }
+
+        # --- Helper setup ---
+        plane_indices = {
+            "xy": (0, 1),
+            "xz": (0, 2),
+            "yz": (1, 2)
+        }
+        plane_normals = {
+            "xy": (0, 0, 1),
+            "xz": (0, 1, 0),
+            "yz": (1, 0, 0)
+        }
+        slice_coords = {
+            "xy": z_coords,
+            "xz": y_coords,
+            "yz": x_coords
+        }
+
+        # --- Create projections ---
+        for plane, vtx_idx in plane_indices.items():
+
+            # Collapse the normal-axis coordinates to 0 and create polygons for each face.
+            polys = []
+            for face in mesh.faces:
+                points_2d = mesh.vertices[face][:, vtx_idx]
+                polygon = geom.Polygon(points_2d)
+                if polygon.is_valid and not polygon.is_empty and polygon.minimum_clearance > 1e-3:
+                    polys.append(polygon)
+
+            if polys:
+                total_shape = ops.unary_union(polys)
+
+                if total_shape.geom_type == "Polygon":
+                    patch = polygon_to_pathpatch(total_shape)
+                    projection_artists[plane] = patch
+
+                elif total_shape.geom_type == "MultiPolygon":
+                    patch = multipolygon_to_single_pathpatch(total_shape)
+                    projection_artists[plane] = patch
+
+        # --- Create intersections using section_multiplane ---
+        for plane, coords in slice_coords.items():
+            normal = plane_normals[plane]
+            dummy_origin = (0, 0, 0)
+
+            sections = mesh.section_multiplane(
+                plane_origin=dummy_origin,
+                plane_normal=normal,
+                heights=coords
+            )
+
+            if sections is None:
+                intersection_slices[plane] = [None for _ in coords]
+                continue
+
+            for section in sections:
+                if section is None or section.is_empty:
+                    intersection_slices[plane].append(None)
+                    continue
+
+                # try:
+                #     if plane == "xz":
+                #         reflection = np.array([
+                #             [-1, 0, 0],
+                #             [0, 1, 0],
+                #             [0, 0, 1]
+                #         ])
+                #         section.apply_transform(reflection)
+                #
+                #         angle = np.deg2rad(90)
+                #         rotation = np.array([
+                #             [np.cos(angle), -np.sin(angle), 0],
+                #             [np.sin(angle), np.cos(angle), 0],
+                #             [0, 0, 1]
+                #         ])
+                #         section.apply_transform(rotation)
+                #
+                #     elif plane == "yz":
+                #         angle = np.deg2rad(-90)
+                #         rotation = np.array([
+                #             [np.cos(angle), -np.sin(angle), 0],
+                #             [np.sin(angle), np.cos(angle), 0],
+                #             [0, 0, 1]
+                #         ])
+                #         section.apply_transform(rotation)
+                #
+                # except ValueError as e:
+                #     print("to_planar failed:", e)
+                #     intersection_slices[plane].append(None)
+                #     continue
+
+                lines = []
+                for entity in section.entities:
+                    discrete = entity.discrete(section.vertices)
+                    if len(discrete) > 1:
+                        lines.append(geom.LineString(discrete))
+
+                pgon = MultiPolygon(section.polygons_full)
+
+                # Create the patch using your existing helper
+                patch = polygon_to_pathpatch(
+                    pgon
+                )
+
+                intersection_slices[plane].append(patch)
+
+        return projection_artists, intersection_slices
 
 
-class MonitorResultDB(Base):
-    __tablename__ = "monitor_results"
+class MonitorModel(Base):
+    __tablename__ = 'monitors'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    simulation_id = Column(Integer, ForeignKey("saved_simulations.id"))
-    monitor_name = Column(String)
-    plane_normal = Column(NumpyArrayType)  # Store as JSON (Tuple[int, int, int])
-    t_result_id = Column(Integer, ForeignKey("t_results.id"))
-    field_result_id = Column(Integer, ForeignKey("field_results.id"))
+    id: int = Column(Integer, primary_key=True)
+    simulation_id: int = Column(Integer, ForeignKey("simulations.id"))
+    name: str = Column(String)
+    monitor_type: str = Column(String)  # discriminator
+    parameters: dict = Column(JSON, nullable=False)
 
-    simulation = relationship("SavedSimulationDB", back_populates="monitor_results")
-    t_result = relationship("TResultDB")
-    field_result = relationship("FieldResultDB")
+    # Optional FieldAndPowerMonitor fields
+    wavelengths: NDArray = Column(NumpyArrayType, nullable=True)
+    x: NDArray = Column(NumpyArrayType, nullable=True)
+    y: NDArray = Column(NumpyArrayType, nullable=True)
+    z: NDArray = Column(NumpyArrayType, nullable=True)
+    T: NDArray = Column(NumpyArrayType, nullable=True)
+    power: NDArray = Column(NumpyArrayType, nullable=True)
 
+    __mapper_args__ = {
+        "polymorphic_on": monitor_type,
+        "polymorphic_identity": "base_monitor"
+    }
 
-class TResultDB(Base):
-    __tablename__ = "t_results"
+    _simulation = relationship("SimulationModel", back_populates="_monitors")
+    _fields = relationship("FieldModel", back_populates="_monitor", cascade="all, delete-orphan")
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    wavelengths = Column(PickleType)  # Store NumPy array
-    data = Column(PickleType)  # Store NumPy array
+    @property
+    def simulation(self) -> SimulationModel:
+        return self._simulation
 
-
-class FieldResultDB(Base):
-    __tablename__ = "field_results"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    monitor_id = Column(Integer, ForeignKey("monitors.id"), nullable=False)  # Foreign key to MonitorDB
-    monitor = relationship("MonitorDB", back_populates="field_results")  # SQLAlchemy relationship
-
-    field_type = Column(String, nullable=False)
-    wavelengths = Column(PickleType, nullable=False)  # Store NumPy array
-    x_coords = Column(PickleType, nullable=False)
-    y_coords = Column(PickleType, nullable=False)
-    z_coords = Column(PickleType, nullable=False)
-    x_field = Column(PickleType, nullable=True)
-    y_field = Column(PickleType, nullable=True)
-    z_field = Column(PickleType, nullable=True)
-
-    @classmethod
-    def from_field(cls, field: Field, monitor: "MonitorDB") -> "FieldResultDB":
-        """Convert a Field object into a FieldResultDB instance and link it to a MonitorDB instance."""
-        return cls(
-            monitor=monitor,
-            field_type=field.field_type,
-            wavelengths=field.wavelengths,
-            x_coords=field.x_coords,
-            y_coords=field.y_coords,
-            z_coords=field.z_coords,
-            x_field=field.x_field,
-            y_field=field.y_field,
-            z_field=field.z_field
-        )
-
-    def to_field(self) -> Field:
-        """Convert a FieldResultDB instance back into a Field object."""
-        return Field(
-            monitor_name=self.monitor.name,
-            field_type=self.field_type,
-            wavelengths=self.wavelengths,
-            x_coords=self.x_coords,
-            y_coords=self.y_coords,
-            z_coords=self.z_coords,
-            x_field=self.x_field,
-            y_field=self.y_field,
-            z_field=self.z_field
-        )
+    @property
+    def fields(self) -> List[FieldModel]:
+        return self._fields
 
 
-class DatabaseHandler:
-    def __init__(self, db_path):
-        self.engine = create_engine(f"sqlite:///{db_path}")
-        Base.metadata.create_all(self.engine)
-        self.Session = sessionmaker(bind=self.engine)
+class FieldAndPowerMonitorModel(MonitorModel):
+    __mapper_args__ = {
+        "polymorphic_identity": "field_and_power"
+    }
 
-    def save_simulation(self, saved_sim: SavedSimulation, fsp_path):
-        session = self.Session()
 
-        # Read the .fsp file as binary
-        with open(fsp_path, "rb") as f:
-            fsp_data = f.read()
+class FieldModel(Base):
+    __tablename__ = 'fields'
 
-        new_simulation = SavedSimulationDB(
-            category=saved_sim.category,
-            parameters=saved_sim.parameters,
-            fsp_file=fsp_data,
-        )
+    id = Column(Integer, primary_key=True)
+    monitor_id = Column(Integer, ForeignKey("monitors.id"))
+    field_name = Column(String)
+    components = Column(String)
+    data = Column(NumpyArrayType)  # NumPy data stored as binary
 
-        # Add structures
-        for name, mesh in saved_sim.structures:
-            if not len(mesh.vertices) == 0 or len(mesh.faces) == 0:  # Verify that the mesh is not empty
-                new_simulation.structures.append(StructureDB(name=name, trimesh_data=mesh))
+    _monitor = relationship("MonitorModel", back_populates="_fields")
 
-        # Add monitor results
-        for result in saved_sim.monitor_results:
-            new_simulation.monitor_results.append(MonitorResultDB(
-                monitor_name=result["monitor_name"],
-                plane_normal=str(result["plane_normal"]),
-                t_result=TResultDB(wavelengths=result.T.wavelengths, data=result["t_data"]),
-                field_result=FieldResultDB(data=result["field_data"])
-            ))
-
-        session.add(new_simulation)
-        session.commit()
-        session.close()
-
-    def load_simulation(self, sim_id):
-        session = self.Session()
-        sim = session.query(SavedSimulationDB).filter_by(id=sim_id).first()
-        session.close()
-        return sim
-
+    @property
+    def monitor(self) -> MonitorModel:
+        return self._monitor

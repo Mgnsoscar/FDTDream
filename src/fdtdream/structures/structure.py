@@ -184,6 +184,11 @@ class Structure(SimulationObject, StructureInterface, ABC):
 
         return copied
 
+    @property
+    def material(self) -> str:
+        """Returns the material of the structure."""
+        return self._get("material", str)
+
     # endregion User Methods
 
     # region Abstract Methods

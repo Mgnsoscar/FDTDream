@@ -17,10 +17,11 @@ Most constructor methods (except for the one creating the FDTD Region) require o
 Additionally, each constructor method accepts a set of keyword arguments that allow for customization. These arguments are listed in the method’s documentation. Below is an example of creating a substrate and a power monitor, where all parameters are set using the constructor method.
 
 ```python
-substrate = sim.add.structures.rectangle("substrate", x_span=1000, y_span=1000, z_span=1000, z=-1000/2,
+substrate = sim.add.structures.rectangle("substrate", x_span=1000, y_span=1000, z_span=1000, z=-1000 / 2,
                                          material="SiO2 (Glass) - Palik")
-monitor = sim.add.monitors.power("power", monitor_type="2d z-normal", x_span=substrate.x_span, y_span=substrate.y_span,
-                                 z=100, data_to_record=["power", "ex", "ey", "ez"])
+monitor = sim.add.monitors.ref_power("power", monitor_type="2d z-normal", x_span=substrate.x_span,
+                                     y_span=substrate.y_span,
+                                     z=100, data_to_record=["power", "ex", "ey", "ez"])
 ```
 
 This yields the following simulation environment:
