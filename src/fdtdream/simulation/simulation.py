@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 import os
 import warnings
-from typing import List, Any, ClassVar, Type, TypeVar, Tuple
+from typing import List, Any, ClassVar, Type, TypeVar, Tuple, Dict, Union
 import re
 from itertools import product
 import pickle
@@ -439,127 +439,38 @@ class Simulation(SimulationInterface):
     # endregion
 
     # region User Methods
-
-    def _extract_meshes(self) -> List[PlottedStructure]:
+    def _extract_meshes(self) -> List[SavedStructure]:
 
         # Fetch all structure meshes
-        all_structures = [struct for struct in self._structures if struct._get("material", str) != "etch"]
-        etch_structures = [struct._get_trimesh(absolute=True, units="nm")
-                           for struct in self._structures if struct._get("material", str) == "etch"]
-        meshes = []
-
-        # Get FDTD box mesh and center (in nm)
-        fdtd = self._fdtd
-        fdtd_mesh = self._fdtd._get_trimesh(absolute=True, units="nm")
-        fdtd_position = convert_length(self._fdtd._get_position(absolute=True), "m", "nm")
-        fdtd_center = fdtd_position  # assuming this is the centroid of the FDTD region
-
-        # Get boundary conditions
-        x_bc = self._fdtd._get("x min bc", str).lower()
-        y_bc = self._fdtd._get("y min bc", str).lower()
-        z_bc = self._fdtd._get("z min bc", str).lower()
-
-        # Get truth values for what boundaries are symmetric
-        x_sym = x_bc in ["symmetric", "anti-symmetric"]
-        y_sym = y_bc in ["symmetric", "anti-symmetric"]
-        z_sym = z_bc in ["symmetric", "anti-symmetric"]
-
-        # Make the fdtd region only the part that will be mirrored, not the other regions.
-        mirrored_regions = []
-        epsilon = - 0.1  # Slight buffer to make sure tangenting meshes overlap.
-        if x_sym:
-            x_span = fdtd.x_span / 2
-            m = trimesh.creation.box((x_span + epsilon, fdtd.y_span, fdtd.z_span))
-            m.apply_translation(fdtd_position - np.array([x_span / 2, 0, 0]))
-            mirrored_regions.append(m)
-        if y_sym:
-            y_span = fdtd.y_span / 2
-            m = trimesh.creation.box((fdtd.x_span, y_span + epsilon, fdtd.z_span))
-            m.apply_translation(fdtd_position - np.array([0, y_span / 2, 0]))
-            mirrored_regions.append(m)
-
-        if z_sym:
-            z_span = fdtd.z_span / 2
-            m = trimesh.creation.box((fdtd.x_span, fdtd.y_span, z_span + epsilon))
-            m.apply_translation(fdtd_position - np.array([0, 0, z_span / 2]))
-            mirrored_regions.append(m)
-
-        if mirrored_regions:
-            fdtd_mesh = trimesh.boolean.difference([fdtd_mesh, trimesh.boolean.union(mirrored_regions)])
-
-        # Define mirror directions
-        mirror_axes = []
-        if x_sym:
-            mirror_axes.append([-1, 1])
-        else:
-            mirror_axes.append([1])
-        if y_sym:
-            mirror_axes.append([-1, 1])
-        else:
-            mirror_axes.append([1])
-        if z_sym:
-            mirror_axes.append([-1, 1])
-        else:
-            mirror_axes.append([1])
-
-        def mirror_structure(struct, parent_group) -> PlottedStructure | None:
-            org_mesh = struct._get_trimesh(absolute=True, units="nm")
-
-            # Remove potential etches
-            if etch_structures:
-                org_mesh = trimesh.boolean.difference([org_mesh] + etch_structures)
-
-            mirrored = []
-
+        all_structures = []
+        etch_structures = []
+        for struct in self._structures:
             try:
-                # Get the portion of the structure that is inside the mirrored region
-                mirror_part = trimesh.boolean.intersection([org_mesh, fdtd_mesh])
-
-                # Return None if no part of the structure is inside the region.
-                if mirror_part.is_empty:
-                    return None
-
-                # Mirror across symmetric axes (assumes mirroring around the fdtd_center)
-                for scale in product(*mirror_axes):
-                    if scale == (1, 1, 1):
-                        mirrored.append(mirror_part)
+                if struct._get("material", str) != "etch":
+                    if struct.enabled:
+                        all_structures.append(struct)
+                else:
+                    if struct.enabled:
+                        etch_structures.append(struct._get_trimesh(absolute=True, units="nm"))
+            except ValueError as e:
+                if hasattr(struct, "_base_structure"):  # Then it's a lattice
+                    if struct._base_structure._get("material", str) != "etch":
+                        if struct.enabled:
+                            all_structures.append(struct)
                     else:
-                        m = mirror_part.copy()
-                        m.apply_translation(-fdtd_center)
-                        m.apply_scale(scale)
-                        m.apply_translation(fdtd_center)
-                        mirrored.append(m)
+                        if struct.enabled:
+                            lattice_mesh = struct._get_trimesh(absolute=True, units="nm")
+                            etch_structures.append(lattice_mesh)
+                elif hasattr(struct, "_structures"):  # Then it's a structure group
+                    if struct.enabled:
+                        etch_substructures = [substruct._get_trimesh(absolute=True, units="nm")
+                                           for substruct in struct._structures
+                                           if substruct._get("material", str) == "etch" and substruct.enabled]
+                        etch_structures.extend(etch_substructures)
+                        all_structures.append(struct)
+                else:
+                    raise e
 
-            except Exception as e:
-                print(f"Warning: Mirroring failed for structure '{structure.name}': {e}")
-
-            # Combine original and mirrored pieces
-            try:
-                recombined_struct = trimesh.boolean.union(mirrored)
-            except Exception as e:
-                print(f"Warning: Concatenation failed for '{structure.name}': {e}")
-                recombined_struct = org_mesh
-
-            plotted_structure = PlottedStructure(structure.name, recombined_struct, parent_structure=parent_group)
-
-            return plotted_structure
-
-        for structure in all_structures:
-
-            meshes.append(mirror_structure(structure, None))
-
-            if hasattr(structure, "_structures"):
-                for substruct in structure._structures:
-                    meshes.append(mirror_structure(substruct, structure))
-
-        return meshes
-
-    def _extract_meshes_2(self) -> List[SavedStructure]:
-
-        # Fetch all structure meshes
-        all_structures = [struct for struct in self._structures if struct._get("material", str) != "etch"]
-        etch_structures = [struct._get_trimesh(absolute=True, units="nm")
-                           for struct in self._structures if struct._get("material", str) == "etch"]
         meshes = []
 
         # Get FDTD box mesh and center (in nm)
@@ -645,16 +556,16 @@ class Simulation(SimulationInterface):
                         mirrored.append(m)
 
             except Exception as e:
-                print(f"Warning: Mirroring failed for structure '{structure.name}': {e}")
+                print(f"Warning: Mirroring failed for structure '{struct.name}': {e}")
 
             # Combine original and mirrored pieces
             try:
                 recombined_struct = trimesh.boolean.union(mirrored)
             except Exception as e:
-                print(f"Warning: Concatenation failed for '{structure.name}': {e}")
+                print(f"Warning: Concatenation failed for '{struct.name}': {e}")
                 recombined_struct = org_mesh
 
-            saved_structure = SavedStructure(structure.name, recombined_struct)
+            saved_structure = SavedStructure(struct.name, recombined_struct)
 
             return saved_structure
 
@@ -666,118 +577,66 @@ class Simulation(SimulationInterface):
 
             if hasattr(structure, "_structures"):
                 for substruct in structure._structures:
-                    meshes.append(mirror_structure(substruct, structure))
+                    if substruct._get("material", str) != "etch" and substruct.enabled:
+                        structure_mesh = mirror_structure(substruct, structure)
+                        if structure_mesh:
+                            meshes.append(structure_mesh)
+            elif hasattr(structure, "_base_structure"):
+                if structure._base_structure._get("material", str) != "etch":
+                    structure_mesh = mirror_structure(structure, None)
+                    if structure_mesh:
+                        meshes.append(structure_mesh)
 
         return meshes
 
-    def run_2(self, simulation_name: str, parameters: dict[str, float | str] = None,
-            category: str = "General") -> SavedSimulation:
+    def run(self,
+            database_path: str,
+            simulation_category: str,
+            simulation_name: str,
+            parameters: Dict[str, Union[str, float, int, bool]] = None,
+            info_text: str = None) -> SimulationResults:
+        """
+        Runs the simulation and extracts the result to the database at the database_path.
+        The category is a string deciding what "folder" in the database to put the simulation in.
+        The simulation name is the name of the simulation in the database.
+        The parameter dictionary is an optional set of parameters that can be saved to the database.
+        The info_text string is a str you can save to the simulation with additional information.
+        """
+
+        # Check if a simulation region has been added
+        if self._fdtd is None:
+            raise errors.FDTDreamNoSimulationRegionError("Cannot run simulation, as no FDTD Region is defined.")
 
         # Validate parameters
         if parameters is None:
             parameters = {}
         elif not isinstance(parameters, dict):
-            # TODO: Handle incorrect parameter types
-            pass
+            raise TypeError(f"Expected dictionary for 'parameters', got '{type(parameters)}'.")
 
-        # # Check if a simulation region has been added
-        # if self._fdtd is None:
-        #     raise errors.FDTDreamNoSimulationRegionError("Cannot run simulation, as no FDTD Region is defined.")
+        if not "__info__" in parameters:
+            parameters["__info__"] = info_text if info_text else ""
+
+        # Connect to the database.
+        db_handler = DatabaseHandler(database_path)
 
         # Extract structure meshes
         meshes = self._extract_meshes()
 
-        # # Save simulation to temp file
-        # # Create the temp folder at the same level as the parent directory
-        # script_dir = os.path.dirname(os.path.abspath(__file__))  # Current script location
-        # parent_dir = os.path.dirname(script_dir)  # Go one level up
-        # temp_dir = os.path.join(parent_dir, "temp")  # Path to temp folder
-        #
-        # os.makedirs(temp_dir, exist_ok=True)  # Ensure temp folder exists
-        #
-        # # Create a temporary .fsp file
-        # temp_fsp_path = os.path.join(temp_dir, "temp_simulation.fsp")
-        # self.save(temp_fsp_path)  # Save simulation to temp file
+        # Save simulation to temp file
+        # Create the temp folder at the same level as the parent directory
+        script_dir = os.path.dirname(os.path.abspath(__file__))  # Current script location
+        parent_dir = os.path.dirname(script_dir)  # Go one level up
+        temp_dir = os.path.join(parent_dir, "temp")  # Path to temp folder
+
+        os.makedirs(temp_dir, exist_ok=True)  # Ensure temp folder exists
+
+        # Create a temporary .fsp file
+        temp_fsp_path = os.path.join(temp_dir, "temp_simulation.fsp")
+        self.save(temp_fsp_path)  # Save simulation to temp file
 
         # Run the simulation
-        # self._lumapi().switchtolayout()
-        # self._lumapi().run()
-
-        # Fetch results from the monitors
-        results = []
-        for monitor in self._monitors:
-            if not monitor.enabled:
-                continue
-            if isinstance(monitor, monitors.FreqDomainFieldAndPowerMonitor):
-                results.append(monitor._get_results())
-
-        saved_sim = SavedSimulation(parameters, category, meshes, results)
-
-        # Create the directory if it doesn't exist
-        folder_path = os.path.join(os.getcwd(), category)
-        os.makedirs(folder_path, exist_ok=True)
-
-        # Save the simulation as a pickle
-        pickle_file_path = os.path.join(folder_path, f"{simulation_name}.pkl")
-        with open(pickle_file_path, 'wb') as f:
-            pickle.dump(saved_sim, f)
-
-        # self._lumapi().switchtolayout()
-        #
-        # # Delete the temp file when it's no longer needed
-        # try:
-        #     os.remove(temp_fsp_path)
-        # except OSError as e:
-        #     print(f"Error deleting temp file: {e}")
-
-        # **Delete additional log files if they exist**
-        # save_path = temp_fsp_path
-        # base_name = os.path.splitext(os.path.basename(save_path))[0]  # Get filename without extension
-        # log_files = [f"{base_name}_p0.log", f"{base_name}_p0.err"]
-        #
-        # for log_file in log_files:
-        #     log_file_path = os.path.join(os.path.dirname(save_path), log_file)
-        #     if os.path.exists(log_file_path):
-        #         try:
-        #             os.remove(log_file_path)
-        #             print(f"Deleted: {log_file_path}")
-        #         except OSError as e:
-        #             print(f"Error deleting {log_file_path}: {e}")
-
-        return saved_sim
-
-    def run(self, simulation_name: str, parameters: dict[str, float | str] = None,
-              category: str = "General") -> SimulationResults:
-
-        # Validate parameters
-        if parameters is None:
-            parameters = {}
-        elif not isinstance(parameters, dict):
-            # TODO: Handle incorrect parameter types
-            pass
-
-        # # Check if a simulation region has been added
-        # if self._fdtd is None:
-        #     raise errors.FDTDreamNoSimulationRegionError("Cannot run simulation, as no FDTD Region is defined.")
-
-        # Extract structure meshes
-        meshes = self._extract_meshes_2()
-
-        # # Save simulation to temp file
-        # # Create the temp folder at the same level as the parent directory
-        # script_dir = os.path.dirname(os.path.abspath(__file__))  # Current script location
-        # parent_dir = os.path.dirname(script_dir)  # Go one level up
-        # temp_dir = os.path.join(parent_dir, "temp")  # Path to temp folder
-        #
-        # os.makedirs(temp_dir, exist_ok=True)  # Ensure temp folder exists
-        #
-        # # Create a temporary .fsp file
-        # temp_fsp_path = os.path.join(temp_dir, "temp_simulation.fsp")
-        # self.save(temp_fsp_path)  # Save simulation to temp file
-
-        # Run the simulation
-        # self._lumapi().switchtolayout()
-        # self._lumapi().run()
+        self._lumapi().switchtolayout()
+        self._lumapi().run()
 
         # Fetch results from the monitors
         results = []
@@ -789,38 +648,44 @@ class Simulation(SimulationInterface):
             if res is not None:
                 results.append(res)
 
-        saved_sim = SimulationResults(category, simulation_name, parameters, results, meshes)
+        # Create a SavedSim model
+        saved_sim = SimulationResults(
+            simulation_category,
+            simulation_name,
+            parameters,
+            results,
+            meshes
+        )
 
-        # # Create the directory if it doesn't exist
-        # folder_path = os.path.join(os.getcwd(), category)
-        # os.makedirs(folder_path, exist_ok=True)
-        #
-        # # Save the simulation as a pickle
-        # pickle_file_path = os.path.join(folder_path, f"{simulation_name}.pkl")
-        # with open(pickle_file_path, 'wb') as f:
-        #     pickle.dump(saved_sim, f)
+        # Add the model to the database.
+        db_handler.add_simulation(saved_sim)
 
-        # self._lumapi().switchtolayout()
-        #
-        # # Delete the temp file when it's no longer needed
-        # try:
-        #     os.remove(temp_fsp_path)
-        # except OSError as e:
-        #     print(f"Error deleting temp file: {e}")
+        # Switch back to layout and save the temp file again (to avoid double saving data).
+        self._lumapi().switchtolayout()
+        self.save(temp_fsp_path)
 
-        # **Delete additional log files if they exist**
-        # save_path = temp_fsp_path
-        # base_name = os.path.splitext(os.path.basename(save_path))[0]  # Get filename without extension
-        # log_files = [f"{base_name}_p0.log", f"{base_name}_p0.err"]
-        #
-        # for log_file in log_files:
-        #     log_file_path = os.path.join(os.path.dirname(save_path), log_file)
-        #     if os.path.exists(log_file_path):
-        #         try:
-        #             os.remove(log_file_path)
-        #             print(f"Deleted: {log_file_path}")
-        #         except OSError as e:
-        #             print(f"Error deleting {log_file_path}: {e}")
+        # Delete the temp file when it's no longer needed
+        try:
+            os.remove(temp_fsp_path)
+        except OSError as e:
+            pass
+
+        # Delete additional log files if they exist
+        save_path = temp_fsp_path
+        base_name = os.path.splitext(os.path.basename(save_path))[0]  # Get filename without extension
+        log_files = [f"{base_name}_p0.log", f"{base_name}_p0.err"]
+
+        for log_file in log_files:
+            log_file_path = os.path.join(os.path.dirname(save_path), log_file)
+            if os.path.exists(log_file_path):
+                try:
+                    os.remove(log_file_path)
+                except OSError as e:
+                    pass
+
+        # Print validation
+        print(f"Saved simulation '{simulation_name}' with category '{simulation_category}' "
+              f"to database '{db_handler.filename}'.")
 
         return saved_sim
 

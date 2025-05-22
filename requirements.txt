@@ -9,3 +9,4 @@ shapely
 pyqt6
 manifold3d
 sqlalchemy
+pydantic

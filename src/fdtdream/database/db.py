@@ -1,26 +1,109 @@
 from __future__ import annotations
 
 import io
-from typing import List
-from typing import Optional, Tuple
+from typing import List, Dict, Optional, Union, Tuple
 
+import matplotlib.patches as mpatches
+import matplotlib.path as mpath
 import numpy as np
+import shapely.geometry as geom
+import shapely.ops as ops
+from matplotlib.patches import PathPatch
 from numpy.typing import NDArray
+from pydantic import BaseModel, ConfigDict
+from shapely import MultiPolygon, Polygon
 from sqlalchemy import Column, Integer, String, ForeignKey, JSON
 from sqlalchemy.orm import relationship, declarative_base
 from sqlalchemy.types import TypeDecorator, LargeBinary
 from trimesh import Trimesh
 
-from typing import List, Dict, Optional
-from matplotlib.collections import PolyCollection
-from matplotlib.path import Path
-import matplotlib.path as mpath
-from matplotlib.patches import PathPatch
-import matplotlib.patches as mpatches
-import shapely.geometry as geom
-from shapely import MultiPolygon
-import shapely.ops as ops
-import trimesh
+
+# region Pydantic models
+class CustomBaseModel(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class FieldPydanticModel(CustomBaseModel):
+    field_name: str
+    components: str
+    data: np.ndarray
+
+    @classmethod
+    def from_model(cls, model: FieldModel) -> FieldPydanticModel:
+        return cls(
+            field_name=model.field_name,
+            components=model.components,
+            data=model.data
+        )
+
+
+class FieldAndPowerMonitorPydanticModel(CustomBaseModel):
+    name: str
+    monitor_type: str = "field_and_power"
+    parameters: Dict
+    wavelengths: Optional[np.ndarray]
+    x: Optional[np.ndarray]
+    y: Optional[np.ndarray]
+    z: Optional[np.ndarray]
+    T: Optional[np.ndarray]
+    power: Optional[np.ndarray]
+    E: Optional[FieldPydanticModel]
+    H: Optional[FieldPydanticModel]
+    P: Optional[FieldPydanticModel]
+
+    @classmethod
+    def from_model(cls, model: FieldAndPowerMonitorModel) -> FieldAndPowerMonitorPydanticModel:
+
+        # Fetch the fields.
+        fields = {f.field_name: FieldPydanticModel.from_model(f) for f in model.fields}
+
+        return cls(
+            name=model.name,
+            parameters=model.parameters,
+            wavelengths=model.wavelengths,
+            x=model.x,
+            y=model.y,
+            z=model.z,
+            T=model.T,
+            power=model.power,
+            E=fields.get("E", None),  # type: ignore
+            H=fields.get("H", None),  # type: ignore
+            P=fields.get("P", None)  # type: ignore
+        )
+
+
+class StructurePydanticModel(CustomBaseModel):
+    name: str
+    vertices: np.ndarray
+    faces: np.ndarray
+
+    @classmethod
+    def from_model(cls, model: StructureModel) -> StructurePydanticModel:
+        return cls(
+            name=model.name,
+            vertices=model.vertices,
+            faces=model.faces
+        )
+
+
+class SimulationPydanticModel(CustomBaseModel):
+    category: str
+    name: str
+    parameters: Dict
+    structures: List[StructurePydanticModel]
+    monitors: List[FieldAndPowerMonitorPydanticModel]
+
+    @classmethod
+    def from_model(cls, model: SimulationModel) -> SimulationPydanticModel:
+        return cls(
+            category=model.category,
+            name=model.name,
+            parameters=model.parameters or {},
+            structures=[StructurePydanticModel.from_model(s) for s in model.structures],
+            monitors=[FieldAndPowerMonitorPydanticModel.from_model(m) for m in model.monitors
+                      if m.monitor_type == "field_and_power"]
+        )
+# endregion
 
 
 class NumpyArrayType(TypeDecorator):
@@ -56,12 +139,14 @@ class SimulationModel(Base):
     _monitors = relationship(
         "MonitorModel",
         back_populates="_simulation",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        passive_deletes=True
     )
     _structures = relationship(
         "StructureModel",
         back_populates="_simulation",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        passive_deletes=True
     )
 
     @property
@@ -74,15 +159,17 @@ class SimulationModel(Base):
 
 
 class StructureModel(Base):
+    # region Class Body
     __tablename__ = "structures"
 
     id: int = Column(Integer, primary_key=True)
-    simulation_id: int = Column(Integer, ForeignKey("simulations.id"))
+    simulation_id: int = Column(Integer, ForeignKey("simulations.id", ondelete="CASCADE"))
     name: str = Column(String)
     vertices: NDArray = Column(NumpyArrayType)
     faces: NDArray = Column(NumpyArrayType)
 
     _simulation = relationship("SimulationModel", back_populates="_structures")
+    # endregion
 
     @property
     def simulation(self) -> SimulationModel:
@@ -93,118 +180,119 @@ class StructureModel(Base):
         mesh = Trimesh(self.vertices, self.faces)
         return mesh
 
-    def get_projection_and_intersection(self, x_coords: NDArray, y_coords: NDArray,
-                                        z_coords: NDArray) -> Tuple[dict, dict]:
-        """
-        Generate projections and intersection slices from a trimesh object.
+    def _polygon_to_pathpatch(self, polygon: Union[Polygon, MultiPolygon]) -> PathPatch:
+        """Create a PathPatch accounting for exterior and interiors from a shapely Polygon."""
 
-        Returns:
-            - projection_artists: Dict[str, PolyCollection]
-            - intersection_slices: Dict[str, List[Optional[PolyCollection]]]
-        """
+        if polygon.geom_type == "MultiPolygon":
+            return self._multipolygon_to_single_pathpatch(polygon)
 
-        def polygon_to_pathpatch(p):
-            """Create a PathPatch (with holes) from a shapely Polygon."""
-            if p.geom_type == "MultiPolygon":
-                return multipolygon_to_single_pathpatch(p)
+        vertices = []
+        codes = []
 
-            verts = []
-            codes = []
+        # Exterior ring
+        ext_coords = np.array(polygon.exterior.coords)
+        vertices.extend(ext_coords)
+        codes.extend(
+            [mpath.Path.MOVETO] + [mpath.Path.LINETO] * (len(ext_coords) - 2) + [mpath.Path.CLOSEPOLY])
 
-            # Exterior ring
-            ext_coords = np.array(p.exterior.coords)
-            verts.extend(ext_coords)
+        # Interior rings (holes)
+        for interior in polygon.interiors:
+            intr_coords = np.array(interior.coords)
+            vertices.extend(intr_coords)
             codes.extend(
-                [mpath.Path.MOVETO] + [mpath.Path.LINETO] * (len(ext_coords) - 2) + [mpath.Path.CLOSEPOLY])
+                [mpath.Path.MOVETO] + [mpath.Path.LINETO] * (len(intr_coords) - 2) + [mpath.Path.CLOSEPOLY])
 
-            # Interior rings (holes)
-            for intr in p.interiors:
-                intr_coords = np.array(intr.coords)
-                verts.extend(intr_coords)
-                codes.extend(
-                    [mpath.Path.MOVETO] + [mpath.Path.LINETO] * (len(intr_coords) - 2) + [mpath.Path.CLOSEPOLY])
+        path = mpath.Path(vertices, codes)
+        patch = mpatches.PathPatch(path)
+        return patch
 
-            path = mpath.Path(verts, codes)
-            patch_ = mpatches.PathPatch(path)
-            return patch_
+    @staticmethod
+    def _multipolygon_to_single_pathpatch(polygon: MultiPolygon) -> Optional[PathPatch]:
+        """Create a single PathPatch from a MultiPolygon (with all holes and parts combined)."""
 
-        def multipolygon_to_single_pathpatch(multipolygon_):
-            """Create a single PathPatch from a MultiPolygon (with all holes and parts combined)."""
-            vertices_ = []
-            codes_ = []
+        vertices = []
+        codes = []
 
-            for polygon_ in multipolygon_.geoms:
-                # Exterior
-                ext_ = np.array(polygon_.exterior.coords)
-                vertices_.extend(ext_)
-                codes_.extend([mpath.Path.MOVETO] + [mpath.Path.LINETO] * (len(ext_) - 2) + [mpath.Path.CLOSEPOLY])
+        for polygon in polygon.geoms:
+            # Exterior
+            ext = np.array(polygon.exterior.coords)
+            vertices.extend(ext)
+            codes.extend([mpath.Path.MOVETO] + [mpath.Path.LINETO] * (len(ext) - 2) + [mpath.Path.CLOSEPOLY])
 
-                # Interiors (holes)
-                for interior_ in polygon_.interiors:
-                    hole_ = np.array(interior_.coords)
-                    vertices_.extend(hole_)
-                    codes_.extend([mpath.Path.MOVETO] + [mpath.Path.LINETO] * (len(hole_) - 2) + [mpath.Path.CLOSEPOLY])
+            # Interiors (holes)
+            for interior in polygon.interiors:
+                hole = np.array(interior.coords)
+                vertices.extend(hole)
+                codes.extend([mpath.Path.MOVETO] + [mpath.Path.LINETO] * (len(hole) - 2) + [mpath.Path.CLOSEPOLY])
 
-            vertices_ = np.array(vertices_)
-            codes_ = np.array(codes_)
+        vertices = np.array(vertices)
+        codes = np.array(codes)
 
-            path_ = mpath.Path(vertices_, codes_)
-            patch_ = mpatches.PathPatch(path_)
-            return patch_
+        if vertices.shape[0] == 0:
+            return None
 
-        # Fetch attributes
+        path_ = mpath.Path(vertices, codes)
+        patch = mpatches.PathPatch(path_)
+        return patch
+
+    def get_projections_and_intersections(self, x: NDArray, y: NDArray, z: NDArray
+    ) -> Optional[Tuple[Dict[str, Optional[PathPatch]], Dict[str, List[Optional[PathPatch]]]]]:
+
+        # Fetch the mesh
         mesh = self.get_trimesh()
 
-        projection_artists: Dict[str, mpatches.PathPatch] = {}
-        intersection_slices: Dict[str, List[Optional[mpatches.PathPatch]]] = {
-            "xy": [],
-            "xz": [],
-            "yz": []
-        }
-
-        # --- Helper setup ---
+        # Map plane names to indices
         plane_indices = {
-            "xy": (0, 1),
-            "xz": (0, 2),
-            "yz": (1, 2)
-        }
-        plane_normals = {
-            "xy": (0, 0, 1),
-            "xz": (0, 1, 0),
-            "yz": (1, 0, 0)
-        }
-        slice_coords = {
-            "xy": z_coords,
-            "xz": y_coords,
-            "yz": x_coords
+            "XY Plane": (0, 1),
+            "XZ Plane": (0, 2),
+            "YZ Plane": (1, 2)
         }
 
-        # --- Create projections ---
-        for plane, vtx_idx in plane_indices.items():
+        # region Handle 2D projections
+        projections = {}
 
-            # Collapse the normal-axis coordinates to 0 and create polygons for each face.
+        for plane, indices in plane_indices.items():
             polys = []
             for face in mesh.faces:
-                points_2d = mesh.vertices[face][:, vtx_idx]
+                points_2d = mesh.vertices[face][:, indices]
                 polygon = geom.Polygon(points_2d)
-                if polygon.is_valid and not polygon.is_empty and polygon.minimum_clearance > 1e-3:
+                if polygon.is_valid and not polygon.is_empty and polygon.minimum_clearance > 1e-4:
                     polys.append(polygon)
 
             if polys:
                 total_shape = ops.unary_union(polys)
+                patch = self._polygon_to_pathpatch(total_shape)
+            else:
+                patch = None
 
-                if total_shape.geom_type == "Polygon":
-                    patch = polygon_to_pathpatch(total_shape)
-                    projection_artists[plane] = patch
+            projections[plane] = patch
+        # endregion
 
-                elif total_shape.geom_type == "MultiPolygon":
-                    patch = multipolygon_to_single_pathpatch(total_shape)
-                    projection_artists[plane] = patch
+        # region Handle 2D intersections
+        intersection_slices: Dict[str, List[Optional[PathPatch]]] = {
+            "XY Plane": [],
+            "XZ Plane": [],
+            "YZ Plane": []
+        }
 
-        # --- Create intersections using section_multiplane ---
-        for plane, coords in slice_coords.items():
+        slice_coords = {
+            "XY Plane": z,
+            "XZ Plane": y,
+            "YZ Plane": x,
+        }
+
+        plane_normals = {
+            "XY Plane": (0, 0, 1),
+            "XZ Plane": (0, 1, 0),
+            "YZ Plane": (1, 0, 0)
+        }
+
+        dummy_origin = (0, 0, 0)
+
+        for plane, indices in plane_indices.items():
+
+            coords = slice_coords[plane]
             normal = plane_normals[plane]
-            dummy_origin = (0, 0, 0)
 
             sections = mesh.section_multiplane(
                 plane_origin=dummy_origin,
@@ -214,43 +302,42 @@ class StructureModel(Base):
 
             if sections is None:
                 intersection_slices[plane] = [None for _ in coords]
-                continue
 
             for section in sections:
                 if section is None or section.is_empty:
                     intersection_slices[plane].append(None)
                     continue
 
-                # try:
-                #     if plane == "xz":
-                #         reflection = np.array([
-                #             [-1, 0, 0],
-                #             [0, 1, 0],
-                #             [0, 0, 1]
-                #         ])
-                #         section.apply_transform(reflection)
-                #
-                #         angle = np.deg2rad(90)
-                #         rotation = np.array([
-                #             [np.cos(angle), -np.sin(angle), 0],
-                #             [np.sin(angle), np.cos(angle), 0],
-                #             [0, 0, 1]
-                #         ])
-                #         section.apply_transform(rotation)
-                #
-                #     elif plane == "yz":
-                #         angle = np.deg2rad(-90)
-                #         rotation = np.array([
-                #             [np.cos(angle), -np.sin(angle), 0],
-                #             [np.sin(angle), np.cos(angle), 0],
-                #             [0, 0, 1]
-                #         ])
-                #         section.apply_transform(rotation)
-                #
-                # except ValueError as e:
-                #     print("to_planar failed:", e)
-                #     intersection_slices[plane].append(None)
-                #     continue
+                if plane == "XZ Plane":
+                    # First, mirror the intersection across the Y-axis (invert X-axis)
+                    reflection = np.array([
+                        [-1, 0, 0],  # Mirror X-axis
+                        [0, 1, 0],  # Keep Y-axis
+                        [0, 0, 1]  # Keep Z-axis
+                    ])
+
+                    section.apply_transform(reflection)  # Apply reflection first
+                    # Rotate 90 degrees counter-clockwise to swap axes for XZ view
+                    angle = np.deg2rad(90)
+                    rotation = np.array([
+                        [np.cos(angle), -np.sin(angle), 0],
+                        [np.sin(angle), np.cos(angle), 0],
+                        [0, 0, 1]
+                    ])
+
+                    # Apply transform to Path2D (trimesh.path.Path2D expects 3x3 for 2D)
+                    section.apply_transform(rotation)
+
+                elif plane == "YZ Plane":
+
+                    # Rotate 180 degrees around origin
+                    angle = np.deg2rad(-90)
+                    rotation = np.array([
+                        [np.cos(angle), -np.sin(angle), 0],
+                        [np.sin(angle), np.cos(angle), 0],
+                        [0, 0, 1]
+                    ])
+                    section.apply_transform(rotation)
 
                 lines = []
                 for entity in section.entities:
@@ -258,23 +345,23 @@ class StructureModel(Base):
                     if len(discrete) > 1:
                         lines.append(geom.LineString(discrete))
 
+                # Gather polygons into a multipolygon
                 pgon = MultiPolygon(section.polygons_full)
 
                 # Create the patch using your existing helper
-                patch = polygon_to_pathpatch(
-                    pgon
-                )
+                patch = self._polygon_to_pathpatch(pgon)
 
                 intersection_slices[plane].append(patch)
+        # endregion
 
-        return projection_artists, intersection_slices
+        return projections, intersection_slices
 
 
 class MonitorModel(Base):
     __tablename__ = 'monitors'
 
     id: int = Column(Integer, primary_key=True)
-    simulation_id: int = Column(Integer, ForeignKey("simulations.id"))
+    simulation_id: int = Column(Integer, ForeignKey("simulations.id", ondelete="CASCADE"))
     name: str = Column(String)
     monitor_type: str = Column(String)  # discriminator
     parameters: dict = Column(JSON, nullable=False)
@@ -293,7 +380,12 @@ class MonitorModel(Base):
     }
 
     _simulation = relationship("SimulationModel", back_populates="_monitors")
-    _fields = relationship("FieldModel", back_populates="_monitor", cascade="all, delete-orphan")
+    _fields = relationship(
+        "FieldModel",
+        back_populates="_monitor",
+        cascade="all, delete-orphan",
+        passive_deletes=True
+    )
 
     @property
     def simulation(self) -> SimulationModel:
@@ -314,7 +406,7 @@ class FieldModel(Base):
     __tablename__ = 'fields'
 
     id = Column(Integer, primary_key=True)
-    monitor_id = Column(Integer, ForeignKey("monitors.id"))
+    monitor_id = Column(Integer, ForeignKey("monitors.id", ondelete="CASCADE"))
     field_name = Column(String)
     components = Column(String)
     data = Column(NumpyArrayType)  # NumPy data stored as binary

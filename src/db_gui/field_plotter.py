@@ -11,16 +11,18 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton, QCheckBox, QHBoxLayout
 )
 from matplotlib.axes import Axes
+from .widgets import TightNavigationToolbar
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.collections import QuadMesh, PolyCollection
+from matplotlib.collections import QuadMesh
 from matplotlib.colorbar import Colorbar
 from matplotlib.figure import Figure
 from matplotlib.legend import Legend
-from matplotlib.patches import PathPatch
 from matplotlib.lines import Line2D
+from matplotlib.patches import PathPatch
 from matplotlib.quiver import Quiver
 from matplotlib.text import Text
 from numpy.typing import NDArray
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from .field_plt_settings import FieldSettings
 from .plt_settings import PlotSettings
@@ -42,7 +44,7 @@ class FieldPlotTab(QWidget):
     # endregion
 
     # region Data
-    selected_simulation: Optional[SimulationModel]
+    selected_simulation: Optional[int]
     selected_field: Optional[FieldModel]
     selected_quiver_field: Optional[FieldModel]
     field_data: Optional[NDArray]
@@ -148,10 +150,15 @@ class FieldPlotTab(QWidget):
         self.structure_fills = {}
 
     def _init_figure(self) -> None:
-
         self.fig = Figure()
         self.fig.subplots_adjust(left=0.1, right=0.95, top=0.9, bottom=0.15)
         self.canvas = FigureCanvas(self.fig)
+
+        # Create the toolbar
+        self.toolbar = TightNavigationToolbar(self.canvas, self)
+
+        # Add the toolbar and canvas to the layout
+        self._layout.addWidget(self.toolbar)
         self._layout.addWidget(self.canvas, stretch=1)
 
         self.ax = self.fig.add_subplot(111)
@@ -249,7 +256,7 @@ class FieldPlotTab(QWidget):
         structure_plt_layout = QVBoxLayout()
 
         self.plot_structures_checkbox = QCheckBox("Show Structures")
-        self.plot_structures_checkbox.setChecked(False)
+        self.plot_structures_checkbox.setChecked(True)
         self.plot_structures_checkbox.setEnabled(False)
         self.plot_structures_checkbox.toggled.connect(self.on_show_structures_toggled)  # type: ignore
         structure_plt_layout.addWidget(self.plot_structures_checkbox)
@@ -303,8 +310,9 @@ class FieldPlotTab(QWidget):
 
         # If the selected simulation is None, update it. If it's not None, update it at the end of this method.
         # This is to keep track of if the newly selected monitor is a part of the same simulation as the previous one.
+        was_none = self.selected_simulation is None
         if self.selected_simulation is None and self.monitor is not None:
-            self.selected_simulation = self.monitor.simulation
+            self.selected_simulation = self.monitor.simulation.id
 
         self.reinit_field_map_fields(keep_selection=True)
         self.reinit_components(keep_selection=True)
@@ -323,10 +331,10 @@ class FieldPlotTab(QWidget):
         # Reset axes and plot controls while plotting the currently selected dataset
         self.reinit_axes()
 
-        self.structure_settings.populate_structures()
+        self.reinit_structures(was_none)
 
         # Update the monitor's parent simulation
-        self.selected_simulation = self.monitor.simulation if self.monitor else None
+        self.selected_simulation = self.monitor.simulation.id if self.monitor else None
 
     def reinit_field_map_fields(self, keep_selection: bool = False) -> None:
         """
@@ -660,8 +668,15 @@ class FieldPlotTab(QWidget):
                 self.quadmesh.set_visible(self.plot_fieldmap_checkbox.isChecked())
 
                 # Create the colorbar and associate it with the mesh
-                if not self.colorbar:
-                    self.colorbar = self.fig.colorbar(self.quadmesh, ax=self.ax)
+                if not self.colorbar and self.plot_fieldmap_checkbox.isChecked():
+                    divider = make_axes_locatable(self.ax)
+
+                    # 5% of main plot width, 5% padding
+                    self.cax = divider.append_axes("right", size="5%", pad=0.1)
+                    self.cax.xaxis.set_visible(False)
+                    self.cax.yaxis.set_ticks_position('right')
+                    self.cax.yaxis.set_label_position('right')
+                    self.colorbar = self.fig.colorbar(self.quadmesh, cax=self.cax)
 
             # Create a new quiver object with zero data initially.
             if plot_vectors:
@@ -714,14 +729,28 @@ class FieldPlotTab(QWidget):
             self.ax.relim()
             self.ax.autoscale()
 
-    def reinit_structures(self) -> None:
+    def reinit_structures(self, execute_anyways: bool = False) -> None:
 
         if self.monitor is None:
             return
-        elif self.selected_simulation == self.monitor:
-            return
+        elif execute_anyways:
+            self.remove_structure_artists()
+            self.structure_outlines = {}
+            self.structure_intersections = {}
+            for section in self.structure_settings.section_widgets:
+                self.structure_settings._remove_section(section)
+            self.structure_settings.populate_structures()
 
-        self.structure_settings.populate_structures()
+        elif self.selected_simulation == self.monitor.simulation.id:
+            for section in self.structure_settings.section_widgets:
+                section.on_monitor_changed()
+        else:
+            self.remove_structure_artists()
+            self.structure_outlines = {}
+            self.structure_intersections = {}
+            for section in self.structure_settings.section_widgets:
+                self.structure_settings._remove_section(section)
+            self.structure_settings.populate_structures()
 
     # endregion
 
@@ -789,10 +818,9 @@ class FieldPlotTab(QWidget):
         return False
 
     def remove_structure_artists(self) -> None:
-
         # Remove outline.
-        for _, planes in self.structure_outlines.items():
-            for _, artist in planes.items():
+        for _, structures in self.structure_outlines.items():
+            for _, artist in structures.items():
                 if artist.axes:
                     artist.remove()
 
@@ -816,13 +844,6 @@ class FieldPlotTab(QWidget):
 
         slider: LabeledSlider = getattr(self, f"{coordinate}_slider")
         slider.set_label(label)
-
-        if self.plot_structures_checkbox.isChecked():
-            for section in self.structure_settings.section_widgets:
-                if section.intersection_box.isChecked():
-                    for _, plane in self.structure_intersections.items():
-                        for _, artist in plane.items():
-                            fo
 
         if update_data:
             if self.field_settings.cscale in ["Current wavelength", "Current plane"]:
@@ -858,12 +879,22 @@ class FieldPlotTab(QWidget):
         if not show_field:
             self.quadmesh.set_visible(False)
             if self.colorbar:
+                self.cax.set_visible(False)
                 self.colorbar.remove()
                 self.colorbar = None
         else:
+            divider = make_axes_locatable(self.ax)
+
+            # 5% of main plot width, 5% padding
+            self.cax = divider.append_axes("right", size="5%", pad=0.1)
+            self.cax.xaxis.set_visible(False)
+            self.cax.yaxis.set_ticks_position('right')
+            self.cax.yaxis.set_label_position('right')
+
             self.quadmesh.set_visible(True)
+            self.cax.set_visible(True)
             if not self.colorbar:
-                self.colorbar = self.fig.colorbar(self.quadmesh, ax=self.ax)
+                self.colorbar = self.fig.colorbar(self.quadmesh, cax=self.cax)
         self.draw_idle_timer.start(self.CALLBACK_DELAY)
 
     def on_show_structures_toggled(self, val: bool) -> None:
@@ -982,28 +1013,12 @@ class FieldPlotTab(QWidget):
         self.quiver_settings_dialog.activateWindow()
 
     def on_plot_settings_clicked(self) -> None:
-        if self.plot_settings_dialog and self.plot_settings_dialog.isVisible():
-            self.plot_settings_dialog.close()
+        if self.plot_settings.isVisible():
+            self.plot_settings.close()
             return
 
-        if self.plot_settings_dialog is None:
-            self.plot_settings_dialog = QDialog(self)
-            self.plot_settings_dialog.setWindowTitle("Quadmesh Settings")
-            self.plot_settings_dialog.setMinimumWidth(300)
-            self.plot_settings_dialog.setWindowFlags(self.plot_settings_dialog.windowFlags() | Qt.WindowType.Tool)
-
-            layout = QVBoxLayout(self.plot_settings_dialog)
-            layout.addWidget(self.plot_settings)
-
-        # Position dialog so its bottom aligns with button
-        button_pos = self.plot_btn.mapToGlobal(self.plot_btn.rect().topRight())
-        dialog_height = self.plot_settings_dialog.sizeHint().height()
-        adjusted_pos = button_pos - QPoint(0, dialog_height)
-        self.plot_settings_dialog.move(adjusted_pos)
-
-        self.plot_settings_dialog.show()
-        self.plot_settings_dialog.raise_()
-        self.plot_settings_dialog.activateWindow()
+        else:
+            self.plot_settings.show()
     # endregion
 
     # region Methods
@@ -1018,6 +1033,8 @@ class FieldPlotTab(QWidget):
                 dialog.close()
 
     def _draw_idle(self) -> None:
+        self.ax.set_anchor('C')
+        self.fig.tight_layout()
         self.canvas.draw_idle()
     # endregion
 
@@ -1046,3 +1063,8 @@ class FieldPlotTab(QWidget):
     def field(self) -> str:
         return self.field_combo.get_selected()
     # endregion
+
+    def resizeEvent(self, a0):
+        self.ax.set_anchor('C')
+        self.fig.tight_layout()
+        self.canvas.draw_idle()

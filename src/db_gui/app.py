@@ -12,13 +12,19 @@ from .object_explorer import ObjectExplorer
 from .field_plotter import FieldPlotTab
 from ..fdtdream.database.handler import DatabaseHandler
 from .top_level import TopLevel
+from .linear_plot.linear_plot import LinearPlotTab
+from ..FDTDiscover.dbPanel import DatabasePanel, signals
+from ..FDTDiscover.dbPanel.models import DBObjects, DBObject
+from ..FDTDiscover.application import MenuBar
 from typing import Tuple
+
 
 class MainWindow(TopLevel):
 
     # region Class Body
+    tabs: QTabWidget
     splitter: QSplitter
-    explorer: ObjectExplorer
+    explorer: DatabasePanel
     tabs: QTabWidget
     field_tab: FieldPlotTab
     monitors: List[FieldAndPower]
@@ -39,8 +45,7 @@ class MainWindow(TopLevel):
         self.prompt_for_database()
 
         # Set title and initial size of the application
-        self.setWindowTitle("FDTDecode")
-        self.setMinimumSize(1200, 800)
+        self.setWindowTitle("FDTDiscover")
 
         # Central Widget
         central_widget = QWidget()
@@ -55,9 +60,10 @@ class MainWindow(TopLevel):
         layout.addWidget(self.splitter)
 
         # Explorer
-        self.explorer = ObjectExplorer(self)
-        self.explorer.monitor_selected.connect(self.on_monitor_selected)
-        self.explorer.simulation_selected.connect(self.on_simulation_selected)
+        self.explorer = DatabasePanel()
+        # self.explorer = ObjectExplorer(self)
+        signals.dbRightClickMenuSignalBus.plotFields.connect(self.on_monitor_selected)
+        signals.dbPanelSignalBus.simulationSelected.connect(self.on_simulation_selected)
         self.splitter.addWidget(self.explorer)
 
         # Tabs
@@ -68,7 +74,9 @@ class MainWindow(TopLevel):
 
         self.tabs = QTabWidget()
         self.field_tab = FieldPlotTab(self)
+        self.t_plotter = LinearPlotTab(self)
         self.tabs.addTab(self.field_tab, "Plot Fields")
+        self.tabs.addTab(self.t_plotter, "T/power")
         tab_wrapper_layout.addWidget(self.tabs)
         self.splitter.addWidget(tab_wrapper)
 
@@ -78,23 +86,26 @@ class MainWindow(TopLevel):
         self.apply_styles()
 
     def on_simulation_selected(self, sim_id: int):
-        print(f"Simulation id: {sim_id}")
+        ...
 
-    def on_monitor_selected(self, sim_id: int, mon_id: int):
-        self.selected_monitor = self.db_handler.get_monitor_by_id(mon_id)
-        self.selected_simulation = self.db_handler.get_simulation_by_id(sim_id)
-        self.field_tab.set_new_monitor()
+    def on_monitor_selected(self, monitor: DBObject):
+        self.selected_monitor = monitor["dbHandler"].get_monitor_by_id(monitor["id"])
+        self.selected_simulation = monitor["dbHandler"].get_simulation_by_id(self.selected_monitor.simulation_id)
+        if self.selected_monitor.fields:
+            self.field_tab.set_new_monitor()
 
     def init_menu_bar(self):
-        menubar = self.menuBar()
-        file_menu = menubar.addMenu("File")
-
-        open_db_action = QAction("Open Database...", self)
-        open_db_action.triggered.connect(self.prompt_for_database)
-        file_menu.addAction(open_db_action)
+        # menubar = self.menuBar()
+        # file_menu = menubar.addMenu("File")
+        #
+        # open_db_action = QAction("Open Database...", self)
+        # open_db_action.triggered.connect(self.prompt_for_database)
+        # file_menu.addAction(open_db_action)
+        self.setMenuBar(MenuBar(self))
 
     def prompt_for_database(self):
-        self.db_handler = DatabaseHandler(r"C:\Users\mgnso\Desktop\Master thesis\Code\FDTDreamNew\tests\tests.db")
+        self.db_handler = DatabaseHandler(
+            r"C:\Users\mgnso\Desktop\Master thesis\Code\FDTDreamNew\tests\SimulationDatabase.db")
         # path, _ = QFileDialog.getOpenFileName(
         #     self,
         #     "Select Database File",

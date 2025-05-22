@@ -77,6 +77,10 @@ class FieldPlotTabInterface(Protocol):
     quiver_settings_dialog: Optional[QDialog]
     plot_settings_dialog: Optional[QDialog]
 
+    x_slider: LabeledSlider
+    y_slider: LabeledSlider
+    z_slider: LabeledSlider
+
     plot_fieldmap_checkbox: QCheckBox
     plot_vectors_checkbox: QCheckBox
     plot_structures_checkbox: QCheckBox

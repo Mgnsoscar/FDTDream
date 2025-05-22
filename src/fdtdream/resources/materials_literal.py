@@ -2,6 +2,7 @@ from typing import Literal
 # This file will be erased and rewritten every time a new Lumerical FDTD project file is created or loaded.
 
 Materials = Literal[
+    'PZT on Pt (Lead zirconate titanate on Platinum) - Sintef',
     'Ag (Silver) - Johnson and Christy',
     'Al (Aluminium) - CRC',
     'Ag (Silver) - Palik (0-2um)',
@@ -12,6 +13,7 @@ Materials = Literal[
     '5CB - Li',
     'Ge (Germanium) - Palik',
     'Si3N4 (Silicon Nitride) - Luke',
+    'PZT (Lead zirconate titanate) - Sintef',
     '5PCH - Li',
     'TiO2 (Titanium Dioxide) - Kischkat',
     'Ag (Silver) - CRC',
@@ -22,6 +24,7 @@ Materials = Literal[
     'W (Tungsten) - CRC',
     'TiO2 (Titanium Dioxide) - Devore',
     'Si3N4 (Silicon Nitride) - Phillip',
+    'TiO2 (Titanium Dioxide) - Sintef',
     'Sn (Tin) - Palik',
     'Cr (Chromium) - Palik',
     'Fe (Iron) - Palik',
@@ -32,6 +35,7 @@ Materials = Literal[
     'Si (Silicon) - Palik',
     'Fe (Iron) - CRC',
     'SiO2 (Glass) - Palik',
+    'Au (Gold) - Ciesielski',
     'Si3N4 (Silicon Nitride) - Kischkat',
     'Pd (Palladium) - Palik',
     'In (Indium) - Palik',
@@ -52,6 +56,7 @@ Materials = Literal[
     'Au (Gold) - Johnson and Christy',
     'GaAs - Palik',
     'V (Vanadium ) - CRC',
+    'YSZ (Yttria-stabilized zirconia)- Sintef',
     '6241-000 - Li',
     'Cu (Copper) - Palik',
     'Ta (Tantalum) - CRC',
